@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -49,6 +50,7 @@ fun ChatScreen(
     val inputState = remember { mutableStateOf("") }
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    val listState = rememberLazyListState()
 
     fun loadHistory() {
         scope.launch {
@@ -65,10 +67,24 @@ fun ChatScreen(
         loadHistory()
     }
 
+    LaunchedEffect(historyState.value.size) {
+        if (historyState.value.isNotEmpty()) {
+            listState.animateScrollToItem(historyState.value.lastIndex)
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("${remarkState.value}\n$uid") },
+                title = {
+                    Column {
+                        Text(text = remarkState.value)
+                        Text(
+                            text = uid,
+                            style = androidx.compose.material3.MaterialTheme.typography.labelSmall
+                        )
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Back")
@@ -102,6 +118,7 @@ fun ChatScreen(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth(),
+                state = listState,
                 contentPadding = PaddingValues(12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
@@ -129,6 +146,10 @@ fun ChatScreen(
                 Button(
                     onClick = {
                         scope.launch {
+                            if (uid.isBlank()) {
+                                snackbarHostState.showSnackbar("联系人无效")
+                                return@launch
+                            }
                             val text = inputState.value.trim()
                             if (text.isBlank()) {
                                 snackbarHostState.showSnackbar("请输入内容")

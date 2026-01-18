@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.BugReport
@@ -35,7 +37,7 @@ import com.kgapp.encryptionchat.data.ChatRepository
 import com.kgapp.encryptionchat.data.model.ContactConfig
 import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun ContactsScreen(
     repository: ChatRepository,
@@ -47,6 +49,7 @@ fun ContactsScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val clipboardManager = LocalClipboardManager.current
     val scope = rememberCoroutineScope()
+    val listState = rememberLazyListState()
 
     LaunchedEffect(Unit) {
         contactsState.value = repository.readContacts()
@@ -72,13 +75,15 @@ fun ContactsScreen(
     ) { padding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding),
+            state = listState,
             contentPadding = PaddingValues(12.dp)
         ) {
-            items(contactsState.value.toList()) { (uid, contact) ->
+            items(contactsState.value.toList(), key = { it.first }) { (uid, contact) ->
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(vertical = 6.dp)
+                        .animateItemPlacement()
                         .clickable { onOpenChat(uid) }
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {

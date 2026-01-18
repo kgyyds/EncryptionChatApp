@@ -61,7 +61,9 @@ class FileStorage(private val context: Context) {
         if (content.isBlank()) {
             return mutableMapOf()
         }
-        return jsonCompact.decodeFromString<Map<String, ContactConfig>>(content).toMutableMap()
+        return runCatching {
+            jsonCompact.decodeFromString<Map<String, ContactConfig>>(content).toMutableMap()
+        }.getOrDefault(mutableMapOf())
     }
 
     fun writeContactsConfig(config: Map<String, ContactConfig>) {
@@ -88,7 +90,9 @@ class FileStorage(private val context: Context) {
         if (content.isBlank()) {
             return mutableMapOf()
         }
-        return jsonCompact.decodeFromString<Map<String, ChatMessage>>(content).toMutableMap()
+        return runCatching {
+            jsonCompact.decodeFromString<Map<String, ChatMessage>>(content).toMutableMap()
+        }.getOrDefault(mutableMapOf())
     }
 
     fun writeChatHistory(uid: String, history: Map<String, ChatMessage>) {
