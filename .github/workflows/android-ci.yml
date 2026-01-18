@@ -26,6 +26,26 @@ jobs:
       - name: Gradle cache
         uses: gradle/gradle-build-action@v3
 
+      - name: Ensure Gradle wrapper jars
+        shell: bash
+        run: |
+          set -euo pipefail
+          url=$(grep -E '^distributionUrl=' gradle/wrapper/gradle-wrapper.properties | cut -d= -f2-)
+          curl -L "$url" -o /tmp/gradle.zip
+          wrapper_jar=$(unzip -Z1 /tmp/gradle.zip | grep -E 'lib/plugins/gradle-wrapper-.*\.jar$' | head -n 1)
+          shared_jar=$(unzip -Z1 /tmp/gradle.zip | grep -E 'lib/gradle-wrapper-shared-.*\.jar$' | head -n 1)
+          cli_jar=$(unzip -Z1 /tmp/gradle.zip | grep -E 'lib/gradle-cli-.*\.jar$' | head -n 1)
+          mkdir -p gradle/wrapper
+          if [ -n "$wrapper_jar" ]; then
+            unzip -p /tmp/gradle.zip "$wrapper_jar" > gradle/wrapper/gradle-wrapper.jar
+          fi
+          if [ -n "$shared_jar" ]; then
+            unzip -p /tmp/gradle.zip "$shared_jar" > gradle/wrapper/gradle-wrapper-shared.jar
+          fi
+          if [ -n "$cli_jar" ]; then
+            unzip -p /tmp/gradle.zip "$cli_jar" > gradle/wrapper/gradle-cli.jar
+          fi
+
       - name: Ensure Gradle wrapper is executable
         run: chmod +x ./gradlew
 
