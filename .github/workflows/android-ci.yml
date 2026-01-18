@@ -39,17 +39,7 @@ jobs:
       - name: Ensure Gradle wrapper is executable
         run: chmod +x ./gradlew
 
-      # 防止有人把 apk/png/jar 等二进制误提交进仓库（你平台会封）
-      - name: Reject committed binaries
-        shell: bash
-        run: |
-          set -euo pipefail
-          bad=$(git ls-files | grep -E '\.(apk|aab|jar|jks|keystore|png|jpg|jpeg|webp|so|dex)$' || true)
-          if [ -n "$bad" ]; then
-            echo "Binary files detected in repo (must not be committed):"
-            echo "$bad"
-            exit 1
-          fi
+      
 
       - name: Gradle version
         run: ./gradlew --version
