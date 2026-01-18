@@ -30,8 +30,20 @@ class ChatRepository(
         val handshakeFailed: Boolean
     )
 
-    suspend fun ensureKeys(): Boolean = withContext(Dispatchers.IO) {
-        crypto.ensureKeyPair()
+    suspend fun hasPrivateKey(): Boolean = withContext(Dispatchers.IO) {
+        crypto.hasPrivateKey()
+    }
+
+    suspend fun hasPublicKey(): Boolean = withContext(Dispatchers.IO) {
+        crypto.hasPublicKey()
+    }
+
+    suspend fun hasKeyPair(): Boolean = withContext(Dispatchers.IO) {
+        crypto.hasKeyPair()
+    }
+
+    suspend fun generateKeyPair(): Boolean = withContext(Dispatchers.IO) {
+        crypto.generateKeyPair()
     }
 
     suspend fun getSelfName(): String? = withContext(Dispatchers.IO) {
@@ -40,6 +52,14 @@ class ChatRepository(
 
     suspend fun getPublicPemText(): String? = withContext(Dispatchers.IO) {
         storage.readPublicPemText()
+    }
+
+    suspend fun importPrivatePem(pemText: String): Boolean = withContext(Dispatchers.IO) {
+        crypto.importPrivatePem(pemText)
+    }
+
+    suspend fun importPublicPem(pemText: String): Boolean = withContext(Dispatchers.IO) {
+        crypto.importPublicPem(pemText)
     }
 
     suspend fun getPemBase64(): String? = withContext(Dispatchers.IO) {

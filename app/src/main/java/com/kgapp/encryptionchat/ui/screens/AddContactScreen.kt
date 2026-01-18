@@ -17,19 +17,20 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import android.widget.Toast
 import com.kgapp.encryptionchat.data.ChatRepository
-import kotlinx.coroutines.launch
+import com.kgapp.encryptionchat.ui.viewmodel.ContactsViewModel
+import com.kgapp.encryptionchat.ui.viewmodel.RepositoryViewModelFactory
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -37,11 +38,11 @@ fun AddContactScreen(
     repository: ChatRepository,
     onBack: () -> Unit
 ) {
+    val viewModel: ContactsViewModel = viewModel(factory = RepositoryViewModelFactory(repository))
     val remarkState = remember { mutableStateOf("") }
     val pubKeyState = remember { mutableStateOf("") }
     val pwdState = remember { mutableStateOf("") }
-    val snackbarHostState = remember { SnackbarHostState() }
-    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     Scaffold(
         topBar = {
@@ -54,7 +55,6 @@ fun AddContactScreen(
                 }
             )
         },
-        snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { padding ->
         Column(
             modifier = Modifier
@@ -87,23 +87,23 @@ fun AddContactScreen(
             )
             Button(
                 onClick = {
-                    scope.launch {
-                        val remark = remarkState.value.trim()
-                        val pubKey = pubKeyState.value.trim()
-                        val pwd = pwdState.value.trim()
-                        if (remark.isBlank() || pubKey.isBlank() || pwd.isBlank()) {
-                            snackbarHostState.showSnackbar("请填写完整信息")
-                            return@launch
-                        }
-                        if (!pubKey.contains("BEGIN PUBLIC KEY") || !pubKey.contains("END PUBLIC KEY")) {
-                            snackbarHostState.showSnackbar("公钥格式不正确")
-                            return@launch
-                        }
-                        val uid = repository.addContact(remark, pubKey, pwd)
-                        snackbarHostState.showSnackbar("保存成功: $uid")
+                    val remark = remarkState.value.trim()
+                    val pubKey = pubKeyState.value.trim()
+                    val pwd = pwdState.value.trim()
+                    if (remark.isBlank() || pubKey.isBlank() || pwd.isBlank()) {
+                        Toast.makeText(context, "请填写完整信息", Toast.LENGTH_SHORT).show()
+                        return@Button
+                    }
+                    if (!pubKey.contains("BEGIN PUBLIC KEY") || !pubKey.contains("END PUBLIC KEY")) {
+                        Toast.makeText(context, "公钥格式不正确", Toast.LENGTH_SHORT).show()
+                        return@Button
+                    }
+                    viewModel.addContact(remark, pubKey, pwd) { _ ->
+                        Toast.makeText(context, "保存成功", Toast.LENGTH_SHORT).show()
                         remarkState.value = ""
                         pubKeyState.value = ""
                         pwdState.value = ""
+                        onBack()
                     }
                 },
                 contentPadding = PaddingValues(horizontal = 24.dp, vertical = 12.dp)

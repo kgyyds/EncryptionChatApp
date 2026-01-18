@@ -11,6 +11,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Refresh
@@ -21,8 +22,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -31,11 +30,17 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import android.widget.Toast
 import com.kgapp.encryptionchat.data.ChatRepository
-import com.kgapp.encryptionchat.data.model.ChatMessage
 import com.kgapp.encryptionchat.ui.components.MessageBubble
+import com.kgapp.encryptionchat.ui.viewmodel.ChatViewModel
+import com.kgapp.encryptionchat.ui.viewmodel.RepositoryViewModelFactory
+import com.kgapp.encryptionchat.util.TimeFormatter
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -45,31 +50,20 @@ fun ChatScreen(
     uid: String,
     onBack: () -> Unit
 ) {
-    val historyState = remember { mutableStateOf<List<Pair<String, ChatMessage>>>(emptyList()) }
-    val remarkState = remember { mutableStateOf(uid) }
+    val viewModel: ChatViewModel = viewModel(factory = RepositoryViewModelFactory(repository))
+    val state = viewModel.state.collectAsStateWithLifecycle()
     val inputState = remember { mutableStateOf("") }
-    val snackbarHostState = remember { SnackbarHostState() }
-    val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
-
-    fun loadHistory() {
-        scope.launch {
-            val contacts = repository.readContacts()
-            remarkState.value = contacts[uid]?.Remark ?: uid
-            val history = repository.readChatHistory(uid)
-            historyState.value = history
-                .toList()
-                .sortedBy { it.first.toLongOrNull() ?: 0L }
-        }
-    }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(uid) {
-        loadHistory()
+        viewModel.load(uid)
     }
 
-    LaunchedEffect(historyState.value.size) {
-        if (historyState.value.isNotEmpty()) {
-            listState.animateScrollToItem(historyState.value.lastIndex)
+    LaunchedEffect(state.value.messages.size) {
+        if (state.value.messages.isNotEmpty()) {
+            listState.animateScrollToItem(state.value.messages.lastIndex)
         }
     }
 
@@ -78,10 +72,10 @@ fun ChatScreen(
             TopAppBar(
                 title = {
                     Column {
-                        Text(text = remarkState.value)
+                        Text(text = state.value.remark)
                         Text(
                             text = uid,
-                            style = androidx.compose.material3.MaterialTheme.typography.labelSmall
+                            style = MaterialTheme.typography.labelSmall
                         )
                     }
                 },
@@ -93,21 +87,17 @@ fun ChatScreen(
                 actions = {
                     IconButton(onClick = {
                         scope.launch {
-                            val result = repository.readChat(uid)
-                            if (result.handshakeFailed) {
-                                snackbarHostState.showSnackbar("握手密码错误")
-                            } else if (!result.success) {
-                                snackbarHostState.showSnackbar(result.message ?: "拉取失败")
+                            val message = viewModel.readNewMessages()
+                            if (!message.isNullOrBlank()) {
+                                Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
                             }
-                            loadHistory()
                         }
                     }) {
                         Icon(imageVector = Icons.Default.Refresh, contentDescription = "Refresh")
                     }
                 }
             )
-        },
-        snackbarHost = { SnackbarHost(snackbarHostState) }
+        }
     ) { padding ->
         Column(
             modifier = Modifier
@@ -122,11 +112,12 @@ fun ChatScreen(
                 contentPadding = PaddingValues(12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(historyState.value) { (ts, message) ->
+                items(state.value.messages) { (ts, message) ->
+                    val formattedTime = remember(ts) { TimeFormatter.formatTimestamp(ts) }
                     MessageBubble(
                         text = message.text,
                         isMine = message.Spokesman == 0,
-                        timestamp = ts
+                        timestamp = formattedTime
                     )
                 }
             }
@@ -145,23 +136,18 @@ fun ChatScreen(
                 )
                 Button(
                     onClick = {
+                        val text = inputState.value.trim()
+                        if (text.isBlank()) {
+                            Toast.makeText(context, "请输入内容", Toast.LENGTH_SHORT).show()
+                            return@Button
+                        }
                         scope.launch {
-                            if (uid.isBlank()) {
-                                snackbarHostState.showSnackbar("联系人无效")
-                                return@launch
-                            }
-                            val text = inputState.value.trim()
-                            if (text.isBlank()) {
-                                snackbarHostState.showSnackbar("请输入内容")
-                                return@launch
-                            }
-                            val result = repository.sendChat(uid, text)
-                            if (!result.success) {
-                                snackbarHostState.showSnackbar(result.message ?: "发送失败")
+                            val message = viewModel.sendMessage(text)
+                            if (!message.isNullOrBlank()) {
+                                Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
                             } else {
                                 inputState.value = ""
                             }
-                            loadHistory()
                         }
                     }
                 ) {

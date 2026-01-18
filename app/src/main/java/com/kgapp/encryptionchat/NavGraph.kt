@@ -1,7 +1,6 @@
 package com.kgapp.encryptionchat
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -13,10 +12,12 @@ import com.kgapp.encryptionchat.ui.screens.AddContactScreen
 import com.kgapp.encryptionchat.ui.screens.ChatScreen
 import com.kgapp.encryptionchat.ui.screens.ContactsScreen
 import com.kgapp.encryptionchat.ui.screens.DebugScreen
+import com.kgapp.encryptionchat.ui.screens.SettingsScreen
 
 sealed class Screen(val route: String) {
     data object Contacts : Screen("contacts")
     data object AddContact : Screen("add_contact")
+    data object Settings : Screen("settings")
     data object Debug : Screen("debug")
     data object Chat : Screen("chat/{uid}") {
         fun createRoute(uid: String) = "chat/$uid"
@@ -26,9 +27,6 @@ sealed class Screen(val route: String) {
 @Composable
 fun EncryptionChatApp(repository: ChatRepository) {
     val navController = rememberNavController()
-    LaunchedEffect(Unit) {
-        repository.ensureKeys()
-    }
     NavHost(
         navController = navController,
         startDestination = Screen.Contacts.route,
@@ -39,7 +37,8 @@ fun EncryptionChatApp(repository: ChatRepository) {
                 repository = repository,
                 onAddContact = { navController.navigate(Screen.AddContact.route) },
                 onOpenChat = { uid -> navController.navigate(Screen.Chat.createRoute(uid)) },
-                onOpenDebug = { navController.navigate(Screen.Debug.route) }
+                onOpenDebug = { navController.navigate(Screen.Debug.route) },
+                onOpenSettings = { navController.navigate(Screen.Settings.route) }
             )
         }
         composable(Screen.AddContact.route) {
@@ -61,6 +60,9 @@ fun EncryptionChatApp(repository: ChatRepository) {
         }
         composable(Screen.Debug.route) {
             DebugScreen(repository = repository, onBack = { navController.popBackStack() })
+        }
+        composable(Screen.Settings.route) {
+            SettingsScreen(repository = repository, onBack = { navController.popBackStack() })
         }
     }
 }

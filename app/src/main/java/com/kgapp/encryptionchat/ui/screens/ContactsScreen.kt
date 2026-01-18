@@ -4,6 +4,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -14,28 +16,30 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kgapp.encryptionchat.data.ChatRepository
-import com.kgapp.encryptionchat.data.model.ContactConfig
-import kotlinx.coroutines.launch
+import com.kgapp.encryptionchat.ui.viewmodel.ContactsViewModel
+import com.kgapp.encryptionchat.ui.viewmodel.RepositoryViewModelFactory
+import android.widget.Toast
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -43,16 +47,23 @@ fun ContactsScreen(
     repository: ChatRepository,
     onAddContact: () -> Unit,
     onOpenChat: (String) -> Unit,
-    onOpenDebug: () -> Unit
+    onOpenDebug: () -> Unit,
+    onOpenSettings: () -> Unit
 ) {
-    val contactsState = remember { mutableStateOf<Map<String, ContactConfig>>(emptyMap()) }
-    val snackbarHostState = remember { SnackbarHostState() }
+    val viewModel: ContactsViewModel = viewModel(factory = RepositoryViewModelFactory(repository))
+    val state = viewModel.state.collectAsStateWithLifecycle()
     val clipboardManager = LocalClipboardManager.current
-    val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
+    val context = LocalContext.current
 
     LaunchedEffect(Unit) {
-        contactsState.value = repository.readContacts()
+        viewModel.refresh()
+    }
+
+    LaunchedEffect(state.value.hasKeys) {
+        if (!state.value.hasKeys) {
+            Toast.makeText(context, "请先生成或导入密钥", Toast.LENGTH_SHORT).show()
+        }
     }
 
     Scaffold(
@@ -60,6 +71,9 @@ fun ContactsScreen(
             TopAppBar(
                 title = { Text("EncryptionChat") },
                 actions = {
+                    IconButton(onClick = onOpenSettings) {
+                        Icon(imageVector = Icons.Default.Settings, contentDescription = "Settings")
+                    }
                     IconButton(onClick = onOpenDebug) {
                         Icon(imageVector = Icons.Default.BugReport, contentDescription = "Debug")
                     }
@@ -70,15 +84,27 @@ fun ContactsScreen(
             FloatingActionButton(onClick = onAddContact) {
                 Icon(imageVector = Icons.Default.Add, contentDescription = "Add")
             }
-        },
-        snackbarHost = { SnackbarHost(snackbarHostState) }
+        }
     ) { padding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding),
             state = listState,
             contentPadding = PaddingValues(12.dp)
         ) {
-            items(contactsState.value.toList(), key = { it.first }) { (uid, contact) ->
+            if (!state.value.hasKeys) {
+                item {
+                    Card(modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text(text = "请先生成或导入密钥")
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Button(onClick = onOpenSettings) {
+                                Text(text = "前往设置")
+                            }
+                        }
+                    }
+                }
+            }
+            items(state.value.contacts, key = { it.first }) { (uid, contact) ->
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -94,9 +120,7 @@ fun ContactsScreen(
                                 .padding(top = 4.dp)
                                 .clickable {
                                     clipboardManager.setText(AnnotatedString(uid))
-                                    scope.launch {
-                                        snackbarHostState.showSnackbar("UID 已复制")
-                                    }
+                                    Toast.makeText(context, "UID 已复制", Toast.LENGTH_SHORT).show()
                                 }
                         ) {
                             Text(text = uid)

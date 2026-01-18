@@ -23,20 +23,21 @@ class CryptoManager(private val storage: FileStorage) {
         private const val PUBLIC_FOOTER = "-----END PUBLIC KEY-----"
     }
 
-    fun ensureKeyPair(): Boolean {
+    fun hasPrivateKey(): Boolean = storage.privateKeyFile().exists()
+
+    fun hasPublicKey(): Boolean = storage.publicKeyFile().exists()
+
+    fun hasKeyPair(): Boolean = hasPrivateKey() && hasPublicKey()
+
+    fun generateKeyPair(): Boolean {
         storage.ensureKeyDirs()
-        val privFile = storage.privateKeyFile()
-        val pubFile = storage.publicKeyFile()
-        if (privFile.exists() && pubFile.exists()) {
-            return true
-        }
         val generator = KeyPairGenerator.getInstance("RSA")
         generator.initialize(2048)
         val keyPair = generator.generateKeyPair()
         val privatePem = pemEncode(PRIVATE_HEADER, PRIVATE_FOOTER, keyPair.private.encoded)
         val publicPem = pemEncode(PUBLIC_HEADER, PUBLIC_FOOTER, keyPair.public.encoded)
-        privFile.writeText(privatePem, Charsets.UTF_8)
-        pubFile.writeText(publicPem, Charsets.UTF_8)
+        storage.privateKeyFile().writeText(privatePem, Charsets.UTF_8)
+        storage.publicKeyFile().writeText(publicPem, Charsets.UTF_8)
         return true
     }
 
@@ -54,6 +55,34 @@ class CryptoManager(private val storage: FileStorage) {
     }
 
     fun readPublicPemText(): String? = storage.readPublicPemText()
+
+    fun importPrivatePem(pemText: String): Boolean {
+        return try {
+            val text = pemText.trim()
+            if (!text.contains(PRIVATE_HEADER) || !text.contains(PRIVATE_FOOTER)) {
+                return false
+            }
+            storage.ensureKeyDirs()
+            storage.privateKeyFile().writeText(text + if (text.endsWith("\n")) "" else "\n", Charsets.UTF_8)
+            true
+        } catch (ex: Exception) {
+            false
+        }
+    }
+
+    fun importPublicPem(pemText: String): Boolean {
+        return try {
+            val text = pemText.trim()
+            if (!text.contains(PUBLIC_HEADER) || !text.contains(PUBLIC_FOOTER)) {
+                return false
+            }
+            storage.ensureKeyDirs()
+            storage.publicKeyFile().writeText(text + if (text.endsWith("\n")) "" else "\n", Charsets.UTF_8)
+            true
+        } catch (ex: Exception) {
+            false
+        }
+    }
 
     fun computePemBase64(): String? {
         val pem = readPublicPemText() ?: return null
