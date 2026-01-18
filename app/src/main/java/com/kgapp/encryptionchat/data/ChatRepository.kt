@@ -1,5 +1,6 @@
 package com.kgapp.encryptionchat.data
 
+import com.kgapp.encryptionchat.data.api.ApiResult
 import com.kgapp.encryptionchat.data.api.ChatApi
 import com.kgapp.encryptionchat.data.crypto.CryptoManager
 import com.kgapp.encryptionchat.data.model.ChatMessage
@@ -90,8 +91,11 @@ class ChatRepository(
             "recipient" to uid,
             "text" to encrypted
         )
-        val resp = api.postForm(payload)
-            ?: return@withContext SendResult(false, null, "网络失败", null)
+        val respResult = api.postForm(payload)
+        val resp = when (respResult) {
+            is ApiResult.Success -> respResult.value
+            is ApiResult.Failure -> return@withContext SendResult(false, null, respResult.message, null)
+        }
         val code = resp.optInt("code", -1)
         if (code == 0 && resp.has("ts")) {
             val serverTs = resp.optString("ts")
@@ -121,8 +125,11 @@ class ChatRepository(
             "from" to uid,
             "last_ts" to lastTs.toString()
         )
-        val resp = api.postForm(payload)
-            ?: return@withContext ReadResult(false, null, "网络失败", 0, false)
+        val respResult = api.postForm(payload)
+        val resp = when (respResult) {
+            is ApiResult.Success -> respResult.value
+            is ApiResult.Failure -> return@withContext ReadResult(false, null, respResult.message, 0, false)
+        }
         val code = resp.optInt("code", -1)
         if (code == 0 && resp.has("data")) {
             val data = resp.optJSONObject("data") ?: JSONObject()
