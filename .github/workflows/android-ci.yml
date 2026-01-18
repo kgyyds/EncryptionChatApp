@@ -31,20 +31,24 @@ jobs:
         run: |
           set -euo pipefail
           url=$(grep -E '^distributionUrl=' gradle/wrapper/gradle-wrapper.properties | cut -d= -f2-)
+          echo "Gradle distribution: $url"
           curl -L "$url" -o /tmp/gradle.zip
           wrapper_jar=$(unzip -Z1 /tmp/gradle.zip | grep -E 'lib/plugins/gradle-wrapper-.*\.jar$' | head -n 1)
           shared_jar=$(unzip -Z1 /tmp/gradle.zip | grep -E 'lib/gradle-wrapper-shared-.*\.jar$' | head -n 1)
           cli_jar=$(unzip -Z1 /tmp/gradle.zip | grep -E 'lib/gradle-cli-.*\.jar$' | head -n 1)
-          mkdir -p gradle/wrapper
-          if [ -n "$wrapper_jar" ]; then
-            unzip -p /tmp/gradle.zip "$wrapper_jar" > gradle/wrapper/gradle-wrapper.jar
+          if [ -z "$wrapper_jar" ]; then
+            echo "Gradle wrapper jar not found in distribution" >&2
+            exit 1
           fi
+          mkdir -p gradle/wrapper
+          unzip -p /tmp/gradle.zip "$wrapper_jar" > gradle/wrapper/gradle-wrapper.jar
           if [ -n "$shared_jar" ]; then
             unzip -p /tmp/gradle.zip "$shared_jar" > gradle/wrapper/gradle-wrapper-shared.jar
           fi
           if [ -n "$cli_jar" ]; then
             unzip -p /tmp/gradle.zip "$cli_jar" > gradle/wrapper/gradle-cli.jar
           fi
+          ls -l gradle/wrapper
 
       - name: Ensure Gradle wrapper is executable
         run: chmod +x ./gradlew
