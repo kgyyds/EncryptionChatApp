@@ -1,6 +1,7 @@
 package com.kgapp.encryptionchat.util
 
 import java.time.Instant
+import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -11,12 +12,11 @@ object TimeFormatter {
 
     fun formatTimestamp(ts: String, nowEpochSeconds: Long = Instant.now().epochSecond): String {
         val epochSeconds = ts.toLongOrNull() ?: return ts
-        val diff = nowEpochSeconds - epochSeconds
+        val nowDate = LocalDate.ofInstant(Instant.ofEpochSecond(nowEpochSeconds), ZoneId.systemDefault())
+        val msgDate = LocalDate.ofInstant(Instant.ofEpochSecond(epochSeconds), ZoneId.systemDefault())
         return when {
-            diff < 60 -> "刚刚"
-            diff < 3600 -> "${diff / 60} 分钟前"
-            diff < 86400 -> "${diff / 3600} 小时前"
-            diff < 172800 -> "昨天 ${formatTime(epochSeconds)}"
+            msgDate.isEqual(nowDate) -> formatTime(epochSeconds)
+            msgDate.plusDays(1).isEqual(nowDate) -> "昨天 ${formatTime(epochSeconds)}"
             else -> formatDateTime(epochSeconds)
         }
     }

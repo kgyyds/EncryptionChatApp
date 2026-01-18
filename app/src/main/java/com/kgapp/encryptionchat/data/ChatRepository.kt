@@ -90,6 +90,15 @@ class ChatRepository(
         storage.readChatHistory(uid)
     }
 
+    suspend fun appendMessage(uid: String, ts: String, speaker: Int, text: String) = withContext(Dispatchers.IO) {
+        storage.upsertChatMessage(uid, ts, ChatMessage(Spokesman = speaker, text = text))
+    }
+
+    suspend fun replaceMessageTimestamp(uid: String, oldTs: String, newTs: String, speaker: Int, text: String) =
+        withContext(Dispatchers.IO) {
+            storage.replaceChatTimestamp(uid, oldTs, newTs, ChatMessage(Spokesman = speaker, text = text))
+        }
+
     suspend fun sendChat(uid: String, text: String): SendResult = withContext(Dispatchers.IO) {
         val config = storage.readContactsConfig()
         val contact = config[uid]
@@ -119,9 +128,6 @@ class ChatRepository(
         val code = resp.optInt("code", -1)
         if (code == 0 && resp.has("ts")) {
             val serverTs = resp.optString("ts")
-            val history = storage.readChatHistory(uid)
-            history[serverTs] = ChatMessage(Spokesman = 0, text = text)
-            storage.writeChatHistory(uid, history)
             return@withContext SendResult(true, code, null, serverTs)
         }
         return@withContext SendResult(false, code, "服务器返回错误", null)

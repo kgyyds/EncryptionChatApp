@@ -102,6 +102,19 @@ class FileStorage(private val context: Context) {
         file.writeText(content, Charsets.UTF_8)
     }
 
+    fun upsertChatMessage(uid: String, ts: String, message: ChatMessage) {
+        val history = readChatHistory(uid)
+        history[ts] = message
+        writeChatHistory(uid, history)
+    }
+
+    fun replaceChatTimestamp(uid: String, oldTs: String, newTs: String, message: ChatMessage) {
+        val history = readChatHistory(uid)
+        history.remove(oldTs)
+        history[newTs] = message
+        writeChatHistory(uid, history)
+    }
+
     fun readPublicPemText(): String? {
         val file = publicKeyFile()
         return if (file.exists()) file.readText(Charsets.UTF_8) else null

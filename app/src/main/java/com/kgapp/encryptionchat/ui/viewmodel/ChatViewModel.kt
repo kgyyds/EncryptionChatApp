@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.time.Instant
 
 class ChatViewModel(
     private val repository: ChatRepository
@@ -41,11 +42,20 @@ class ChatViewModel(
     suspend fun sendMessage(text: String): String? {
         val uid = _state.value.uid
         if (uid.isBlank()) return "联系人无效"
+        val localTs = Instant.now().epochSecond.toString()
+        repository.appendMessage(uid, localTs, 0, text)
+        refresh()
         val result = repository.sendChat(uid, text)
         return if (result.success) {
+            val serverTs = result.addedTs
+            if (!serverTs.isNullOrBlank() && serverTs != localTs) {
+                repository.replaceMessageTimestamp(uid, localTs, serverTs, 0, text)
+            }
             refresh()
             null
         } else {
+            repository.appendMessage(uid, Instant.now().epochSecond.toString(), 2, "消息发送失败")
+            refresh()
             result.message ?: "消息发送失败"
         }
     }
@@ -55,8 +65,16 @@ class ChatViewModel(
         if (uid.isBlank()) return "联系人无效"
         val result = repository.readChat(uid)
         return when {
-            result.handshakeFailed -> "握手密码错误"
-            !result.success -> result.message ?: "网络连接异常"
+            result.handshakeFailed -> {
+                repository.appendMessage(uid, Instant.now().epochSecond.toString(), 2, "握手密码错误")
+                refresh()
+                null
+            }
+            !result.success -> {
+                repository.appendMessage(uid, Instant.now().epochSecond.toString(), 2, result.message ?: "网络连接异常")
+                refresh()
+                null
+            }
             else -> {
                 refresh()
                 null

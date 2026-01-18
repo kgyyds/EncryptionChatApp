@@ -28,8 +28,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.background
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
@@ -42,6 +44,8 @@ import com.kgapp.encryptionchat.ui.viewmodel.ChatViewModel
 import com.kgapp.encryptionchat.ui.viewmodel.RepositoryViewModelFactory
 import com.kgapp.encryptionchat.util.TimeFormatter
 import kotlinx.coroutines.launch
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.ui.graphics.Color
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -56,18 +60,27 @@ fun ChatScreen(
     val listState = rememberLazyListState()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val isAtBottom = remember {
+        derivedStateOf {
+            val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+            val total = state.value.messages.size
+            total == 0 || lastVisible >= total - 2
+        }
+    }
 
     LaunchedEffect(uid) {
         viewModel.load(uid)
+        viewModel.readNewMessages()
     }
 
     LaunchedEffect(state.value.messages.size) {
-        if (state.value.messages.isNotEmpty()) {
+        if (state.value.messages.isNotEmpty() && isAtBottom.value) {
             listState.animateScrollToItem(state.value.messages.lastIndex)
         }
     }
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
                 title = {
@@ -87,10 +100,7 @@ fun ChatScreen(
                 actions = {
                     IconButton(onClick = {
                         scope.launch {
-                            val message = viewModel.readNewMessages()
-                            if (!message.isNullOrBlank()) {
-                                Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
-                            }
+                            viewModel.readNewMessages()
                         }
                     }) {
                         Icon(imageVector = Icons.Default.Refresh, contentDescription = "Refresh")
@@ -103,6 +113,7 @@ fun ChatScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .background(MaterialTheme.colorScheme.background)
         ) {
             LazyColumn(
                 modifier = Modifier
@@ -112,11 +123,11 @@ fun ChatScreen(
                 contentPadding = PaddingValues(12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(state.value.messages) { (ts, message) ->
+                items(state.value.messages, key = { it.first + ":" + it.second.Spokesman }) { (ts, message) ->
                     val formattedTime = remember(ts) { TimeFormatter.formatTimestamp(ts) }
                     MessageBubble(
                         text = message.text,
-                        isMine = message.Spokesman == 0,
+                        speaker = message.Spokesman,
                         timestamp = formattedTime
                     )
                 }
@@ -132,7 +143,15 @@ fun ChatScreen(
                     onValueChange = { inputState.value = it },
                     modifier = Modifier.weight(1f),
                     label = { Text("输入消息") },
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send)
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Color(0xFF00D4FF),
+                        unfocusedBorderColor = Color(0xFF4B4B5A),
+                        focusedContainerColor = Color(0xFF0F0F12),
+                        unfocusedContainerColor = Color(0xFF0F0F12),
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White
+                    )
                 )
                 Button(
                     onClick = {
