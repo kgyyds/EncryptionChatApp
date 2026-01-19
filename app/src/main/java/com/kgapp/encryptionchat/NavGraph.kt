@@ -11,6 +11,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.layout.padding
 import androidx.navigation.NavType
@@ -27,6 +28,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import com.kgapp.encryptionchat.data.ChatRepository
+import com.kgapp.encryptionchat.data.sync.MessageSyncManager
 import com.kgapp.encryptionchat.ui.screens.AddContactScreen
 import com.kgapp.encryptionchat.ui.screens.ChatScreen
 import com.kgapp.encryptionchat.ui.screens.ContactsScreen
@@ -41,6 +43,8 @@ import com.kgapp.encryptionchat.ui.screens.ThemeSettingsScreen
 import com.kgapp.encryptionchat.security.SessionState
 import com.kgapp.encryptionchat.security.SessionMode
 import com.kgapp.encryptionchat.security.DuressAction
+import com.kgapp.encryptionchat.util.MessagePullPreferences
+import com.kgapp.encryptionchat.util.PullMode
 
 sealed class Screen(val route: String) {
     data object Gate : Screen("gate")
@@ -63,7 +67,7 @@ sealed class Screen(val route: String) {
 }
 
 @Composable
-fun EncryptionChatApp(repository: ChatRepository) {
+fun EncryptionChatApp(repository: ChatRepository, messageSyncManager: MessageSyncManager) {
     val navController = rememberNavController()
     val sessionMode by SessionState.sessionMode.collectAsState()
     val unlocked by SessionState.unlocked.collectAsState()
@@ -96,6 +100,7 @@ fun EncryptionChatApp(repository: ChatRepository) {
             }
             TabScaffold(
                 repository = repository,
+                messageSyncManager = messageSyncManager,
                 onOpenChat = { uid -> navController.navigate(Screen.Chat.createRoute(uid)) },
                 onOpenAddContact = { navController.navigate(Screen.AddContact.route) },
                 onOpenKeyManagement = { navController.navigate(Screen.KeyManagement.route) },
@@ -187,6 +192,7 @@ fun EncryptionChatApp(repository: ChatRepository) {
             val uid = backStackEntry.arguments?.getString("uid").orEmpty()
             ChatScreen(
                 repository = repository,
+                messageSyncManager = messageSyncManager,
                 uid = uid,
                 onBack = { navController.popBackStack() }
             )
@@ -207,6 +213,7 @@ fun EncryptionChatApp(repository: ChatRepository) {
 @Composable
 private fun TabScaffold(
     repository: ChatRepository,
+    messageSyncManager: MessageSyncManager,
     onOpenChat: (String) -> Unit,
     onOpenAddContact: () -> Unit,
     onOpenKeyManagement: () -> Unit,
@@ -215,6 +222,13 @@ private fun TabScaffold(
 ) {
     var selectedTab by rememberSaveable { mutableStateOf(Screen.Recent.route) }
     val tabs = listOf(Screen.Recent, Screen.Contacts, Screen.Settings)
+    val pullMode by MessagePullPreferences.mode.collectAsState()
+
+    LaunchedEffect(selectedTab, pullMode) {
+        if (selectedTab != Screen.Recent.route) {
+            messageSyncManager.updateMode(pullMode, null)
+        }
+    }
 
     Scaffold(
         bottomBar = {
@@ -245,6 +259,7 @@ private fun TabScaffold(
             when (route) {
                 Screen.Recent.route -> RecentScreen(
                     repository = repository,
+                    messageSyncManager = messageSyncManager,
                     onOpenChat = onOpenChat
                 )
                 Screen.Contacts.route -> ContactsScreen(
@@ -255,6 +270,7 @@ private fun TabScaffold(
                 )
                 Screen.Settings.route -> SettingsScreen(
                     repository = repository,
+                    messageSyncManager = messageSyncManager,
                     onOpenKeyManagement = onOpenKeyManagement,
                     onOpenThemeSettings = onOpenThemeSettings,
                     onOpenSecurity = onOpenSecurity

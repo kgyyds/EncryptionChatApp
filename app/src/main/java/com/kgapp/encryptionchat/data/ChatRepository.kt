@@ -66,6 +66,10 @@ class ChatRepository(
         crypto.computePemBase64()
     }
 
+    suspend fun signNow(): Pair<String, String> = withContext(Dispatchers.IO) {
+        crypto.signNow()
+    }
+
     suspend fun readContacts(): Map<String, ContactConfig> = withContext(Dispatchers.IO) {
         storage.readContactsConfig()
     }
@@ -92,6 +96,11 @@ class ChatRepository(
 
     suspend fun readChatHistory(uid: String): Map<String, ChatMessage> = withContext(Dispatchers.IO) {
         storage.readChatHistory(uid)
+    }
+
+    suspend fun getLastTimestamp(uid: String): Long = withContext(Dispatchers.IO) {
+        val history = storage.readChatHistory(uid)
+        history.keys.mapNotNull { it.toLongOrNull() }.maxOrNull() ?: 0L
     }
 
     suspend fun deleteChatHistory(uid: String) = withContext(Dispatchers.IO) {
@@ -220,4 +229,30 @@ class ChatRepository(
         }
         return@withContext ReadResult(false, code, "无新消息", 0, false)
     }
+
+    data class IncomingResult(
+        val success: Boolean,
+        val message: String? = null,
+        val handshakeFailed: Boolean = false
+    )
+
+    suspend fun handleIncomingCipherMessage(uid: String, ts: Long, cipherText: String): IncomingResult =
+        withContext(Dispatchers.IO) {
+            val config = storage.readContactsConfig()
+            val contact = config[uid]
+                ?: return@withContext IncomingResult(false, "联系人不存在", false)
+            val password = contact.pass
+            val plain = crypto.decryptText(cipherText)
+            val match = Regex("\\[pass=(.*?)\\]").find(plain)
+            val pwd = match?.groupValues?.getOrNull(1) ?: ""
+            val cleanText = plain.replaceFirst(Regex("\\[pass=.*?\\]"), "").trimStart()
+            if (pwd != password) {
+                return@withContext IncomingResult(false, "握手密码错误", true)
+            }
+            if (ts <= 0L || cleanText.isBlank()) {
+                return@withContext IncomingResult(false, "消息格式异常", false)
+            }
+            storage.upsertChatMessage(uid, ts.toString(), ChatMessage(Spokesman = 1, text = cleanText))
+            return@withContext IncomingResult(true, null, false)
+        }
 }

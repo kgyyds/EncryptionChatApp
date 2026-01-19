@@ -23,6 +23,7 @@ import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -35,19 +36,24 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kgapp.encryptionchat.data.ChatRepository
+import com.kgapp.encryptionchat.data.sync.MessageSyncManager
 import com.kgapp.encryptionchat.ui.viewmodel.RepositoryViewModelFactory
 import com.kgapp.encryptionchat.ui.viewmodel.SettingsViewModel
+import com.kgapp.encryptionchat.util.MessagePullPreferences
+import com.kgapp.encryptionchat.util.PullMode
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     repository: ChatRepository,
+    messageSyncManager: MessageSyncManager,
     onOpenKeyManagement: () -> Unit,
     onOpenThemeSettings: () -> Unit,
     onOpenSecurity: () -> Unit
 ) {
     val viewModel: SettingsViewModel = viewModel(factory = RepositoryViewModelFactory(repository))
     val state = viewModel.state.collectAsStateWithLifecycle()
+    val pullMode = MessagePullPreferences.mode.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     Scaffold(
@@ -99,6 +105,36 @@ fun SettingsScreen(
                     onClick = { Toast.makeText(context, "开发中", Toast.LENGTH_SHORT).show() }
                 )
             }
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                SectionTitle("拉取消息模式")
+                PullModeRow(
+                    title = "手动刷新",
+                    selected = pullMode.value == PullMode.MANUAL,
+                    onSelect = {
+                        MessagePullPreferences.setMode(context, PullMode.MANUAL)
+                        messageSyncManager.updateMode(PullMode.MANUAL, null)
+                    }
+                )
+                PullModeRow(
+                    title = "聊天 SSE",
+                    selected = pullMode.value == PullMode.CHAT_SSE,
+                    onSelect = {
+                        MessagePullPreferences.setMode(context, PullMode.CHAT_SSE)
+                        messageSyncManager.updateMode(PullMode.CHAT_SSE, null)
+                    }
+                )
+                PullModeRow(
+                    title = "全局 SSE",
+                    selected = pullMode.value == PullMode.GLOBAL_SSE,
+                    onSelect = {
+                        MessagePullPreferences.setMode(context, PullMode.GLOBAL_SSE)
+                        messageSyncManager.updateMode(PullMode.GLOBAL_SSE, null)
+                    }
+                )
+            }
             Spacer(modifier = Modifier.padding(bottom = 8.dp))
         }
     }
@@ -124,5 +160,32 @@ private fun SettingsRow(
             Text(text = subtitle, style = MaterialTheme.typography.labelSmall)
         }
         Icon(imageVector = Icons.Filled.ChevronRight, contentDescription = null)
+    }
+}
+
+@Composable
+private fun SectionTitle(title: String) {
+    Text(
+        text = title,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+        style = MaterialTheme.typography.titleSmall
+    )
+}
+
+@Composable
+private fun PullModeRow(
+    title: String,
+    selected: Boolean,
+    onSelect: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onSelect() }
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(text = title, modifier = Modifier.weight(1f))
+        RadioButton(selected = selected, onClick = onSelect)
     }
 }
