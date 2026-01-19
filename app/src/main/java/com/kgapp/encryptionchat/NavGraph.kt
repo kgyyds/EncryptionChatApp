@@ -33,6 +33,7 @@ import com.kgapp.encryptionchat.ui.screens.DebugScreen
 import com.kgapp.encryptionchat.ui.screens.KeyManagementScreen
 import com.kgapp.encryptionchat.ui.screens.RecentScreen
 import com.kgapp.encryptionchat.ui.screens.SettingsScreen
+import com.kgapp.encryptionchat.ui.screens.ThemeSettingsScreen
 
 sealed class Screen(val route: String) {
     data object Tabs : Screen("tabs")
@@ -41,6 +42,7 @@ sealed class Screen(val route: String) {
     data object Settings : Screen("settings")
     data object AddContact : Screen("add_contact")
     data object KeyManagement : Screen("key_management")
+    data object ThemeSettings : Screen("theme_settings")
     data object Debug : Screen("debug")
     data object Chat : Screen("chat/{uid}") {
         fun createRoute(uid: String) = "chat/$uid"
@@ -61,7 +63,7 @@ fun EncryptionChatApp(repository: ChatRepository) {
                 onOpenChat = { uid -> navController.navigate(Screen.Chat.createRoute(uid)) },
                 onOpenAddContact = { navController.navigate(Screen.AddContact.route) },
                 onOpenKeyManagement = { navController.navigate(Screen.KeyManagement.route) },
-                onOpenDebug = { navController.navigate(Screen.Debug.route) }
+                onOpenThemeSettings = { navController.navigate(Screen.ThemeSettings.route) }
             )
         }
         composable(Screen.AddContact.route) {
@@ -75,6 +77,9 @@ fun EncryptionChatApp(repository: ChatRepository) {
                 repository = repository,
                 onBack = { navController.popBackStack() }
             )
+        }
+        composable(Screen.ThemeSettings.route) {
+            ThemeSettingsScreen(onBack = { navController.popBackStack() })
         }
         composable(
             Screen.Chat.route,
@@ -100,7 +105,7 @@ private fun TabScaffold(
     onOpenChat: (String) -> Unit,
     onOpenAddContact: () -> Unit,
     onOpenKeyManagement: () -> Unit,
-    onOpenDebug: () -> Unit
+    onOpenThemeSettings: () -> Unit
 ) {
     var selectedTab by rememberSaveable { mutableStateOf(Screen.Recent.route) }
     val tabs = listOf(Screen.Recent, Screen.Contacts, Screen.Settings)
@@ -140,12 +145,12 @@ private fun TabScaffold(
                     repository = repository,
                     onAddContact = onOpenAddContact,
                     onOpenChat = onOpenChat,
-                    onOpenDebug = onOpenDebug,
                     onOpenKeyManagement = onOpenKeyManagement
                 )
                 Screen.Settings.route -> SettingsScreen(
                     repository = repository,
-                    onOpenKeyManagement = onOpenKeyManagement
+                    onOpenKeyManagement = onOpenKeyManagement,
+                    onOpenThemeSettings = onOpenThemeSettings
                 )
             }
         }

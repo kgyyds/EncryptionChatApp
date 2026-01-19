@@ -42,7 +42,8 @@ import com.kgapp.encryptionchat.ui.viewmodel.SettingsViewModel
 @Composable
 fun SettingsScreen(
     repository: ChatRepository,
-    onOpenKeyManagement: () -> Unit
+    onOpenKeyManagement: () -> Unit,
+    onOpenThemeSettings: () -> Unit
 ) {
     val viewModel: SettingsViewModel = viewModel(factory = RepositoryViewModelFactory(repository))
     val state = viewModel.state.collectAsStateWithLifecycle()
@@ -77,10 +78,10 @@ fun SettingsScreen(
                 )
                 Divider(color = MaterialTheme.colorScheme.surfaceVariant)
                 SettingsRow(
-                    title = "外观",
-                    subtitle = "开发中",
+                    title = "主题设置",
+                    subtitle = "跟随系统/暗色/亮色",
                     icon = Icons.Outlined.Palette,
-                    onClick = { Toast.makeText(context, "开发中", Toast.LENGTH_SHORT).show() }
+                    onClick = onOpenThemeSettings
                 )
                 Divider(color = MaterialTheme.colorScheme.surfaceVariant)
                 SettingsRow(

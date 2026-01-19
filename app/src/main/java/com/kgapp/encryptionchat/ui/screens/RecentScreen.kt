@@ -21,7 +21,10 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
@@ -55,61 +58,71 @@ fun RecentScreen(
         viewModel.refresh()
     }
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        state = listState,
-        contentPadding = PaddingValues(12.dp)
-    ) {
-        items(state.value.items, key = { it.uid }) { item ->
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .combinedClickable(
-                        onClick = { onOpenChat(item.uid) },
-                        onLongClick = { deleteTarget.value = item }
-                    )
-                    .padding(vertical = 6.dp)
-            ) {
-                Row(
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
+        topBar = {
+            TopAppBar(
+                title = { Text("最近聊天") },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
+            )
+        }
+    ) { padding ->
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().padding(padding),
+            state = listState,
+            contentPadding = PaddingValues(12.dp)
+        ) {
+            items(state.value.items, key = { it.uid }) { item ->
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 8.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                        .combinedClickable(
+                            onClick = { onOpenChat(item.uid) },
+                            onLongClick = { deleteTarget.value = item }
+                        )
+                        .padding(vertical = 6.dp)
                 ) {
-                    AvatarPlaceholder(text = item.remark, modifier = Modifier.size(44.dp))
-                    Spacer(modifier = Modifier.size(12.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(text = item.remark, style = MaterialTheme.typography.titleMedium)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        AvatarPlaceholder(text = item.remark, modifier = Modifier.size(44.dp))
+                        Spacer(modifier = Modifier.size(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(text = item.remark, style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                text = item.lastText,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
                         Text(
-                            text = item.lastText,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(top = 4.dp)
+                            text = item.lastTime,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                         )
                     }
-                    Text(
-                        text = item.lastTime,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                    )
+                    DropdownMenu(
+                        expanded = deleteTarget.value?.uid == item.uid,
+                        onDismissRequest = { deleteTarget.value = null }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("删除聊天记录") },
+                            onClick = {
+                                viewModel.deleteChat(item.uid)
+                                Toast.makeText(context, "已删除聊天记录", Toast.LENGTH_SHORT).show()
+                                deleteTarget.value = null
+                            }
+                        )
+                    }
                 }
-                DropdownMenu(
-                    expanded = deleteTarget.value?.uid == item.uid,
-                    onDismissRequest = { deleteTarget.value = null }
-                ) {
-                    DropdownMenuItem(
-                        text = { Text("删除聊天记录") },
-                        onClick = {
-                            viewModel.deleteChat(item.uid)
-                            Toast.makeText(context, "已删除聊天记录", Toast.LENGTH_SHORT).show()
-                            deleteTarget.value = null
-                        }
-                    )
-                }
+                Divider(color = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f))
             }
-            Divider(color = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f))
         }
     }
 }

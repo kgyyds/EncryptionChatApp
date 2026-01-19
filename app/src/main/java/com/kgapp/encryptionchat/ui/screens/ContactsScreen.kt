@@ -18,7 +18,6 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material3.Button
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -26,7 +25,6 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -60,7 +58,6 @@ fun ContactsScreen(
     repository: ChatRepository,
     onAddContact: () -> Unit,
     onOpenChat: (String) -> Unit,
-    onOpenDebug: () -> Unit,
     onOpenKeyManagement: () -> Unit
 ) {
     val viewModel: ContactsViewModel = viewModel(factory = RepositoryViewModelFactory(repository))
@@ -85,12 +82,7 @@ fun ContactsScreen(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = { Text("EncryptionChat") },
-                actions = {
-                    IconButton(onClick = onOpenDebug) {
-                        Icon(imageVector = Icons.Default.BugReport, contentDescription = "Debug")
-                    }
-                },
+                title = { Text("联系人") },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
             )
         }
