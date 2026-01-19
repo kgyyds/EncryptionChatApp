@@ -76,6 +76,9 @@ fun SettingsScreen(
             Text(text = "私钥: ${if (state.value.hasPrivateKey) "已存在" else "未找到"}")
             Text(text = "公钥: ${if (state.value.hasPublicKey) "已存在" else "未找到"}")
             Text(text = "公钥指纹: ${if (state.value.fingerprint.isBlank()) "-" else state.value.fingerprint}")
+            if (!state.value.hasPrivateKey || !state.value.hasPublicKey) {
+                Text(text = "请先生成或导入密钥")
+            }
 
             Button(
                 onClick = {
@@ -87,9 +90,10 @@ fun SettingsScreen(
                         }
                     }
                 },
+                enabled = !state.value.isGenerating,
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp)
             ) {
-                Text(text = "生成新密钥对")
+                Text(text = if (state.value.isGenerating) "生成中..." else "生成新密钥对")
             }
 
             OutlinedTextField(

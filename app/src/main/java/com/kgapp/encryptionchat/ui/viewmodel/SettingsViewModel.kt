@@ -15,7 +15,8 @@ class SettingsViewModel(
         val hasPrivateKey: Boolean = false,
         val hasPublicKey: Boolean = false,
         val fingerprint: String = "",
-        val publicPemPreview: String = ""
+        val publicPemPreview: String = "",
+        val isGenerating: Boolean = false
     )
 
     private val _state = MutableStateFlow(SettingsState())
@@ -31,14 +32,16 @@ class SettingsViewModel(
             val hasPublic = repository.hasPublicKey()
             val fingerprint = repository.getSelfName()?.take(12).orEmpty()
             val preview = repository.getPublicPemText()?.lineSequence()?.take(3)?.joinToString("\n").orEmpty()
-            _state.value = SettingsState(hasPrivate, hasPublic, fingerprint, preview)
+            _state.value = SettingsState(hasPrivate, hasPublic, fingerprint, preview, _state.value.isGenerating)
         }
     }
 
     fun generateKeyPair(onComplete: (Boolean) -> Unit) {
         viewModelScope.launch {
+            _state.value = _state.value.copy(isGenerating = true)
             val success = repository.generateKeyPair()
             refresh()
+            _state.value = _state.value.copy(isGenerating = false)
             onComplete(success)
         }
     }
