@@ -43,7 +43,8 @@ import com.kgapp.encryptionchat.ui.viewmodel.SettingsViewModel
 fun SettingsScreen(
     repository: ChatRepository,
     onOpenKeyManagement: () -> Unit,
-    onOpenThemeSettings: () -> Unit
+    onOpenThemeSettings: () -> Unit,
+    onOpenSecurity: () -> Unit
 ) {
     val viewModel: SettingsViewModel = viewModel(factory = RepositoryViewModelFactory(repository))
     val state = viewModel.state.collectAsStateWithLifecycle()
@@ -70,6 +71,13 @@ fun SettingsScreen(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
             ) {
+                SettingsRow(
+                    title = "安全",
+                    subtitle = "胁迫模式与解锁",
+                    icon = Icons.Outlined.Security,
+                    onClick = onOpenSecurity
+                )
+                Divider(color = MaterialTheme.colorScheme.surfaceVariant)
                 SettingsRow(
                     title = "密钥管理",
                     subtitle = if (state.value.hasPrivateKey && state.value.hasPublicKey) "已配置" else "未配置",

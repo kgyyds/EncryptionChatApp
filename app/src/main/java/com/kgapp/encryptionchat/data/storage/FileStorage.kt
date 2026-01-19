@@ -145,4 +145,14 @@ class FileStorage(private val context: Context) {
         val file = privateKeyFile()
         return if (file.exists()) file.readBytes() else null
     }
+
+    fun wipeSensitiveData() {
+        privateKeyFile().delete()
+        publicKeyFile().delete()
+        contactsConfigFile().delete()
+        val chatsDir = resolve("contacts/chats")
+        if (chatsDir.exists()) {
+            chatsDir.deleteRecursively()
+        }
+    }
 }
