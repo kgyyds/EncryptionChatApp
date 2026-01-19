@@ -26,10 +26,11 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.background
@@ -40,21 +41,33 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import android.widget.Toast
 import com.kgapp.encryptionchat.data.ChatRepository
+import com.kgapp.encryptionchat.data.sync.MessageSyncManager
 import com.kgapp.encryptionchat.ui.components.MessageBubble
 import com.kgapp.encryptionchat.ui.viewmodel.ChatViewModel
 import com.kgapp.encryptionchat.ui.viewmodel.RepositoryViewModelFactory
+import com.kgapp.encryptionchat.util.MessagePullPreferences
+import com.kgapp.encryptionchat.util.PullMode
+import com.kgapp.encryptionchat.util.TimeDisplayPreferences
+import com.kgapp.encryptionchat.util.TimeFormatter
+import com.kgapp.encryptionchat.util.UnreadCounter
+import com.kgapp.encryptionchat.util.ChatBackgrounds
 import kotlinx.coroutines.launch
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatScreen(
     repository: ChatRepository,
+    messageSyncManager: MessageSyncManager,
     uid: String,
     onBack: () -> Unit
 ) {
     val viewModel: ChatViewModel = viewModel(factory = RepositoryViewModelFactory(repository))
     val state = viewModel.state.collectAsStateWithLifecycle()
+    val pullMode = MessagePullPreferences.mode.collectAsStateWithLifecycle()
+    val timeMode = TimeDisplayPreferences.mode.collectAsStateWithLifecycle()
     val inputState = remember { mutableStateOf("") }
     val listState = rememberLazyListState()
     val context = LocalContext.current
@@ -71,10 +84,29 @@ fun ChatScreen(
 
     LaunchedEffect(uid) {
         viewModel.load(uid)
-        scope.launch {
-            val message = viewModel.readNewMessages(showNoNewMessageHint = false)
-            if (!message.isNullOrBlank()) {
-                Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+        messageSyncManager.updateMode(pullMode.value, uid)
+        UnreadCounter.clear(context, uid)
+    }
+
+    LaunchedEffect(pullMode.value, uid) {
+        messageSyncManager.updateMode(pullMode.value, uid)
+    }
+
+    LaunchedEffect(uid) {
+        messageSyncManager.updates.collect { updatedUid ->
+            if (updatedUid == uid) {
+                viewModel.refresh()
+                UnreadCounter.clear(context, uid)
+            }
+        }
+    }
+
+    DisposableEffect(uid, pullMode.value) {
+        onDispose {
+            if (pullMode.value == PullMode.CHAT_SSE) {
+                scope.launch { messageSyncManager.stopSse() }
+            } else {
+                messageSyncManager.updateMode(pullMode.value, null)
             }
         }
     }
@@ -90,6 +122,10 @@ fun ChatScreen(
         if (state.value.messages.isNotEmpty() && isAtBottom.value) {
             listState.animateScrollToItem(state.value.messages.lastIndex)
         }
+    }
+
+    val backgroundBrush = remember(state.value.backgroundId) {
+        ChatBackgrounds.brushFor(state.value.backgroundId)
     }
 
     Scaffold(
@@ -111,15 +147,17 @@ fun ChatScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = {
-                        scope.launch {
-                            val message = viewModel.readNewMessages(showNoNewMessageHint = true)
-                            if (!message.isNullOrBlank()) {
-                                Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                    if (pullMode.value != PullMode.GLOBAL_SSE) {
+                        IconButton(onClick = {
+                            scope.launch {
+                                val message = messageSyncManager.refreshOnce(uid)
+                                if (!message.isNullOrBlank()) {
+                                    Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                                }
                             }
+                        }) {
+                            Icon(imageVector = Icons.Default.Refresh, contentDescription = "Refresh")
                         }
-                    }) {
-                        Icon(imageVector = Icons.Default.Refresh, contentDescription = "Refresh")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -140,23 +178,27 @@ fun ChatScreen(
             LazyColumn(
                 modifier = Modifier
                     .weight(1f)
-                    .fillMaxWidth(),
+                    .fillMaxWidth()
+                    .background(backgroundBrush),
                 state = listState,
                 contentPadding = PaddingValues(12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(state.value.messages, key = { it.ts + ":" + it.speaker }) { message ->
+                    val timeLabel = TimeFormatter.formatMessageTimestamp(message.ts, timeMode.value)
                     MessageBubble(
                         text = message.text,
                         speaker = message.speaker,
-                        timestamp = message.timeLabel
+                        timestamp = timeLabel
                     )
                 }
             }
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(12.dp),
+                    .padding(12.dp)
+                    .imePadding()
+                    .navigationBarsPadding(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 OutlinedTextField(

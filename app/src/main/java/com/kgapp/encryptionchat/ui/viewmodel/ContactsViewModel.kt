@@ -47,4 +47,20 @@ class ContactsViewModel(
             onComplete(success)
         }
     }
+
+    fun updateBackground(uid: String, background: String, onComplete: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            val success = repository.updateContactBackground(uid, background)
+            refresh()
+            onComplete(success)
+        }
+    }
+
+    fun deleteContact(uid: String, onComplete: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            val success = repository.deleteContact(uid)
+            refresh()
+            onComplete(success)
+        }
+    }
 }

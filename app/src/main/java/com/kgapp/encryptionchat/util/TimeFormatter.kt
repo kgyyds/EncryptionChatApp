@@ -17,12 +17,26 @@ object TimeFormatter {
     }
 
     fun formatTimestamp(ts: String, nowEpochSeconds: Long = System.currentTimeMillis() / 1000L): String {
+        return formatMessageTimestamp(ts, TimeDisplayMode.RELATIVE, nowEpochSeconds)
+    }
+
+    fun formatMessageTimestamp(
+        ts: String,
+        mode: TimeDisplayMode,
+        nowEpochSeconds: Long = System.currentTimeMillis() / 1000L
+    ): String {
         val epochSeconds = ts.toLongOrNull() ?: return ts
         val messageDate = Date(epochSeconds * 1000L)
-        return when {
-            isToday(epochSeconds, nowEpochSeconds) -> formatTime(messageDate)
-            isYesterday(epochSeconds, nowEpochSeconds) -> "昨天 ${formatTime(messageDate)}"
-            else -> formatDateTime(messageDate)
+        return when (mode) {
+            TimeDisplayMode.RELATIVE -> relativeLabel(epochSeconds, nowEpochSeconds)
+            TimeDisplayMode.ABSOLUTE -> absoluteLabel(epochSeconds, messageDate, nowEpochSeconds)
+            TimeDisplayMode.AUTO -> {
+                if (isWithinLastWeek(epochSeconds, nowEpochSeconds)) {
+                    relativeLabel(epochSeconds, nowEpochSeconds)
+                } else {
+                    formatDate(messageDate)
+                }
+            }
         }
     }
 
@@ -79,6 +93,25 @@ object TimeFormatter {
             Calendar.FRIDAY -> "周五"
             Calendar.SATURDAY -> "周六"
             else -> ""
+        }
+    }
+
+    private fun relativeLabel(epochSeconds: Long, nowEpochSeconds: Long): String {
+        val diffSeconds = nowEpochSeconds - epochSeconds
+        return when {
+            diffSeconds < 60 -> "刚刚"
+            diffSeconds < 60 * 60 -> "${diffSeconds / 60}分钟前"
+            diffSeconds < 24 * 60 * 60 -> "${diffSeconds / 3600}小时前"
+            diffSeconds < 7 * 24 * 60 * 60 -> "${diffSeconds / (24 * 3600)}天前"
+            else -> formatDate(Date(epochSeconds * 1000L))
+        }
+    }
+
+    private fun absoluteLabel(epochSeconds: Long, messageDate: Date, nowEpochSeconds: Long): String {
+        return if (isToday(epochSeconds, nowEpochSeconds)) {
+            formatTime(messageDate)
+        } else {
+            formatDateTime(messageDate)
         }
     }
 }
