@@ -47,8 +47,14 @@ import com.kgapp.encryptionchat.ui.viewmodel.ChatViewModel
 import com.kgapp.encryptionchat.ui.viewmodel.RepositoryViewModelFactory
 import com.kgapp.encryptionchat.util.MessagePullPreferences
 import com.kgapp.encryptionchat.util.PullMode
+import com.kgapp.encryptionchat.util.TimeDisplayPreferences
+import com.kgapp.encryptionchat.util.TimeFormatter
+import com.kgapp.encryptionchat.util.UnreadCounter
+import com.kgapp.encryptionchat.util.ChatBackgrounds
 import kotlinx.coroutines.launch
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -61,6 +67,7 @@ fun ChatScreen(
     val viewModel: ChatViewModel = viewModel(factory = RepositoryViewModelFactory(repository))
     val state = viewModel.state.collectAsStateWithLifecycle()
     val pullMode = MessagePullPreferences.mode.collectAsStateWithLifecycle()
+    val timeMode = TimeDisplayPreferences.mode.collectAsStateWithLifecycle()
     val inputState = remember { mutableStateOf("") }
     val listState = rememberLazyListState()
     val context = LocalContext.current
@@ -78,6 +85,7 @@ fun ChatScreen(
     LaunchedEffect(uid) {
         viewModel.load(uid)
         messageSyncManager.updateMode(pullMode.value, uid)
+        UnreadCounter.clear(context, uid)
     }
 
     LaunchedEffect(pullMode.value, uid) {
@@ -88,6 +96,7 @@ fun ChatScreen(
         messageSyncManager.updates.collect { updatedUid ->
             if (updatedUid == uid) {
                 viewModel.refresh()
+                UnreadCounter.clear(context, uid)
             }
         }
     }
@@ -113,6 +122,10 @@ fun ChatScreen(
         if (state.value.messages.isNotEmpty() && isAtBottom.value) {
             listState.animateScrollToItem(state.value.messages.lastIndex)
         }
+    }
+
+    val backgroundBrush = remember(state.value.backgroundId) {
+        ChatBackgrounds.brushFor(state.value.backgroundId)
     }
 
     Scaffold(
@@ -165,23 +178,27 @@ fun ChatScreen(
             LazyColumn(
                 modifier = Modifier
                     .weight(1f)
-                    .fillMaxWidth(),
+                    .fillMaxWidth()
+                    .background(backgroundBrush),
                 state = listState,
                 contentPadding = PaddingValues(12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(state.value.messages, key = { it.ts + ":" + it.speaker }) { message ->
+                    val timeLabel = TimeFormatter.formatMessageTimestamp(message.ts, timeMode.value)
                     MessageBubble(
                         text = message.text,
                         speaker = message.speaker,
-                        timestamp = message.timeLabel
+                        timestamp = timeLabel
                     )
                 }
             }
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(12.dp),
+                    .padding(12.dp)
+                    .imePadding()
+                    .navigationBarsPadding(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 OutlinedTextField(

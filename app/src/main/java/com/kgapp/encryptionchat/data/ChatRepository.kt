@@ -9,12 +9,18 @@ import com.kgapp.encryptionchat.data.storage.FileStorage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import java.time.Instant
+import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 class ChatRepository(
     private val storage: FileStorage,
     private val crypto: CryptoManager,
     private val api: ChatApi
 ) {
+    private val chatLocks = ConcurrentHashMap<String, Mutex>()
+
     data class SendResult(
         val success: Boolean,
         val serverCode: Int?,
@@ -54,6 +60,10 @@ class ChatRepository(
         storage.readPublicPemText()
     }
 
+    suspend fun getPrivatePemText(): String? = withContext(Dispatchers.IO) {
+        storage.readPrivatePemBytes()?.toString(Charsets.UTF_8)
+    }
+
     suspend fun importPrivatePem(pemText: String): Boolean = withContext(Dispatchers.IO) {
         crypto.importPrivatePem(pemText)
     }
@@ -74,8 +84,20 @@ class ChatRepository(
         storage.readContactsConfig()
     }
 
+    suspend fun getContact(uid: String): ContactConfig? = withContext(Dispatchers.IO) {
+        storage.readContactsConfig()[uid]
+    }
+
     suspend fun updateContactRemark(uid: String, remark: String): Boolean = withContext(Dispatchers.IO) {
         storage.updateContactRemark(uid, remark)
+    }
+
+    suspend fun updateContactBackground(uid: String, background: String): Boolean = withContext(Dispatchers.IO) {
+        val config = storage.readContactsConfig()
+        val existing = config[uid] ?: return@withContext false
+        config[uid] = existing.copy(chatBackground = background)
+        storage.writeContactsConfig(config)
+        return@withContext true
     }
 
     suspend fun readContactsRaw(): String = withContext(Dispatchers.IO) {
@@ -94,6 +116,15 @@ class ChatRepository(
         }
     }
 
+    suspend fun deleteContact(uid: String): Boolean = withContext(Dispatchers.IO) {
+        val config = storage.readContactsConfig()
+        if (!config.containsKey(uid)) return@withContext false
+        config.remove(uid)
+        storage.writeContactsConfig(config)
+        storage.deleteChatHistory(uid)
+        return@withContext true
+    }
+
     suspend fun readChatHistory(uid: String): Map<String, ChatMessage> = withContext(Dispatchers.IO) {
         storage.readChatHistory(uid)
     }
@@ -104,7 +135,11 @@ class ChatRepository(
     }
 
     suspend fun deleteChatHistory(uid: String) = withContext(Dispatchers.IO) {
-        storage.deleteChatHistory(uid)
+        withChatLock(uid) {
+            val ts = Instant.now().epochSecond.toString()
+            val history = mapOf(ts to ChatMessage(Spokesman = 2, text = "聊天记录已清除"))
+            storage.writeChatHistory(uid, history)
+        }
     }
 
     data class RecentChat(
@@ -137,12 +172,16 @@ class ChatRepository(
     }
 
     suspend fun appendMessage(uid: String, ts: String, speaker: Int, text: String) = withContext(Dispatchers.IO) {
-        storage.upsertChatMessage(uid, ts, ChatMessage(Spokesman = speaker, text = text))
+        withChatLock(uid) {
+            storage.upsertChatMessage(uid, ts, ChatMessage(Spokesman = speaker, text = text))
+        }
     }
 
     suspend fun replaceMessageTimestamp(uid: String, oldTs: String, newTs: String, speaker: Int, text: String) =
         withContext(Dispatchers.IO) {
-            storage.replaceChatTimestamp(uid, oldTs, newTs, ChatMessage(Spokesman = speaker, text = text))
+            withChatLock(uid) {
+                storage.replaceChatTimestamp(uid, oldTs, newTs, ChatMessage(Spokesman = speaker, text = text))
+            }
         }
 
     suspend fun sendChat(uid: String, text: String): SendResult = withContext(Dispatchers.IO) {
@@ -180,54 +219,97 @@ class ChatRepository(
     }
 
     suspend fun readChat(uid: String): ReadResult = withContext(Dispatchers.IO) {
-        val config = storage.readContactsConfig()
-        val contact = config[uid]
-            ?: return@withContext ReadResult(false, null, "联系人不存在", 0, false)
-        val password = contact.pass
-        val history = storage.readChatHistory(uid)
-        val lastTs = history.keys.mapNotNull { it.toLongOrNull() }.maxOrNull() ?: 0L
-        val pemB64 = crypto.computePemBase64()
-            ?: return@withContext ReadResult(false, null, "本地公钥缺失", 0, false)
-        val (ts, sig) = crypto.signNow()
-        val payload = mapOf(
-            "ts" to ts,
-            "sig" to sig,
-            "pub" to pemB64,
-            "type" to "0",
-            "from" to uid,
-            "last_ts" to lastTs.toString()
-        )
-        val respResult = api.postForm(payload)
-        val resp = when (respResult) {
-            is ApiResult.Success -> respResult.value
-            is ApiResult.Failure -> return@withContext ReadResult(false, null, respResult.message, 0, false)
+        withChatLock(uid) {
+            val config = storage.readContactsConfig()
+            val contact = config[uid]
+                ?: return@withChatLock ReadResult(false, null, "联系人不存在", 0, false)
+            val password = contact.pass
+            val history = storage.readChatHistory(uid)
+            val lastTs = history.keys.mapNotNull { it.toLongOrNull() }.maxOrNull() ?: 0L
+            val pemB64 = crypto.computePemBase64()
+                ?: return@withChatLock ReadResult(false, null, "本地公钥缺失", 0, false)
+            val (ts, sig) = crypto.signNow()
+            val payload = mapOf(
+                "ts" to ts,
+                "sig" to sig,
+                "pub" to pemB64,
+                "type" to "0",
+                "from" to uid,
+                "last_ts" to lastTs.toString()
+            )
+            val respResult = api.postForm(payload)
+            val resp = when (respResult) {
+                is ApiResult.Success -> respResult.value
+                is ApiResult.Failure -> return@withChatLock ReadResult(false, null, respResult.message, 0, false)
+            }
+            val code = resp.optInt("code", -1)
+            if (code == 0 && resp.has("data")) {
+                val data = resp.optJSONObject("data") ?: JSONObject()
+                var addedCount = 0
+                val keys = data.keys()
+                val newHistory = history.toMutableMap()
+                while (keys.hasNext()) {
+                    val msgTs = keys.next()
+                    val item = data.optJSONObject(msgTs) ?: continue
+                    val cipherText = item.optString("text", "")
+                    val plain = crypto.decryptText(cipherText)
+                    val match = Regex("\\[pass=(.*?)\\]").find(plain)
+                    val pwd = match?.groupValues?.getOrNull(1) ?: ""
+                    val cleanText = plain.replaceFirst(Regex("\\[pass=.*?\\]"), "").trimStart()
+                    if (pwd != password) {
+                        return@withChatLock ReadResult(false, code, "握手密码错误", 0, true)
+                    }
+                    newHistory[msgTs] = ChatMessage(Spokesman = 1, text = cleanText)
+                    addedCount += 1
+                }
+                if (addedCount > 0) {
+                    storage.writeChatHistory(uid, newHistory)
+                    return@withChatLock ReadResult(true, code, null, addedCount, false)
+                }
+            }
+            return@withChatLock ReadResult(false, code, "无新消息", 0, false)
         }
-        val code = resp.optInt("code", -1)
-        if (code == 0 && resp.has("data")) {
-            val data = resp.optJSONObject("data") ?: JSONObject()
-            var addedCount = 0
-            val keys = data.keys()
-            val newHistory = history.toMutableMap()
-            while (keys.hasNext()) {
-                val msgTs = keys.next()
-                val item = data.optJSONObject(msgTs) ?: continue
-                val cipherText = item.optString("text", "")
+    }
+
+    data class IncomingResult(
+        val success: Boolean,
+        val message: String? = null,
+        val handshakeFailed: Boolean = false
+    )
+
+    suspend fun handleIncomingCipherMessage(uid: String, ts: Long, cipherText: String): IncomingResult =
+        withContext(Dispatchers.IO) {
+            withChatLock(uid) {
+                val config = storage.readContactsConfig()
+                val contact = config[uid]
+                    ?: return@withChatLock IncomingResult(false, "联系人不存在", false)
+                val password = contact.pass
                 val plain = crypto.decryptText(cipherText)
                 val match = Regex("\\[pass=(.*?)\\]").find(plain)
                 val pwd = match?.groupValues?.getOrNull(1) ?: ""
                 val cleanText = plain.replaceFirst(Regex("\\[pass=.*?\\]"), "").trimStart()
                 if (pwd != password) {
-                    return@withContext ReadResult(false, code, "握手密码错误", 0, true)
+                    return@withChatLock IncomingResult(false, "握手密码错误", true)
                 }
-                newHistory[msgTs] = ChatMessage(Spokesman = 1, text = cleanText)
-                addedCount += 1
-            }
-            if (addedCount > 0) {
-                storage.writeChatHistory(uid, newHistory)
-                return@withContext ReadResult(true, code, null, addedCount, false)
+                if (ts <= 0L || cleanText.isBlank()) {
+                    return@withChatLock IncomingResult(false, "消息格式异常", false)
+                }
+                storage.upsertChatMessage(uid, ts.toString(), ChatMessage(Spokesman = 1, text = cleanText))
+                return@withChatLock IncomingResult(true, null, false)
             }
         }
-        return@withContext ReadResult(false, code, "无新消息", 0, false)
+
+    suspend fun clearKeyPair(): Boolean = withContext(Dispatchers.IO) {
+        val privateFile = storage.privateKeyFile()
+        val publicFile = storage.publicKeyFile()
+        val privateDeleted = privateFile.delete() || !privateFile.exists()
+        val publicDeleted = publicFile.delete() || !publicFile.exists()
+        privateDeleted && publicDeleted
+    }
+
+    private suspend fun <T> withChatLock(uid: String, block: suspend () -> T): T {
+        val mutex = chatLocks.getOrPut(uid) { Mutex() }
+        return mutex.withLock { block() }
     }
 
     data class IncomingResult(

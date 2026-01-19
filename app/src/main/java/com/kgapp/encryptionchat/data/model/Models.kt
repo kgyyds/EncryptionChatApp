@@ -6,7 +6,8 @@ import kotlinx.serialization.Serializable
 data class ContactConfig(
     val Remark: String,
     val public: String,
-    val pass: String
+    val pass: String,
+    val chatBackground: String = "default"
 )
 
 @Serializable

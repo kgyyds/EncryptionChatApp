@@ -32,6 +32,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.RadioButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -51,6 +54,8 @@ import com.kgapp.encryptionchat.ui.viewmodel.RepositoryViewModelFactory
 import android.widget.Toast
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.clip
+import com.kgapp.encryptionchat.util.ChatBackgrounds
+import com.kgapp.encryptionchat.util.UnreadCounter
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -67,15 +72,13 @@ fun ContactsScreen(
     val context = LocalContext.current
     val editTarget = remember { mutableStateOf<Pair<String, String>?>(null) }
     val editRemark = remember { mutableStateOf("") }
+    val editBackground = remember { mutableStateOf("default") }
+    val menuTarget = remember { mutableStateOf<String?>(null) }
+    val deleteTarget = remember { mutableStateOf<String?>(null) }
+    val backgroundOptions = remember { ChatBackgrounds.options() }
 
     LaunchedEffect(Unit) {
         viewModel.refresh()
-    }
-
-    LaunchedEffect(state.value.hasKeys) {
-        if (!state.value.hasKeys) {
-            Toast.makeText(context, "请先生成或导入密钥", Toast.LENGTH_SHORT).show()
-        }
     }
 
     Scaffold(
@@ -97,7 +100,22 @@ fun ContactsScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(bottom = 12.dp)
-                        .combinedClickable(onClick = onAddContact, onLongClick = onAddContact),
+                        .combinedClickable(
+                            onClick = {
+                                if (!state.value.hasKeys) {
+                                    Toast.makeText(context, "请先生成或导入密钥", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    onAddContact()
+                                }
+                            },
+                            onLongClick = {
+                                if (!state.value.hasKeys) {
+                                    Toast.makeText(context, "请先生成或导入密钥", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    onAddContact()
+                                }
+                            }
+                        ),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
                 ) {
                     Row(
@@ -139,6 +157,7 @@ fun ContactsScreen(
                 }
             }
             items(state.value.contacts, key = { it.first }) { (uid, contact) ->
+                val displayName = contact.Remark.ifBlank { uid }
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -147,8 +166,7 @@ fun ContactsScreen(
                         .combinedClickable(
                             onClick = { onOpenChat(uid) },
                             onLongClick = {
-                                editTarget.value = uid to contact.Remark
-                                editRemark.value = contact.Remark
+                                menuTarget.value = uid
                             }
                         )
                 ) {
@@ -158,9 +176,9 @@ fun ContactsScreen(
                             .padding(horizontal = 8.dp, vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        AvatarPlaceholder(text = contact.Remark, modifier = Modifier.size(44.dp))
+                        AvatarPlaceholder(text = displayName, modifier = Modifier.size(44.dp))
                         Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
-                            Text(text = contact.Remark, style = MaterialTheme.typography.titleMedium)
+                            Text(text = displayName, style = MaterialTheme.typography.titleMedium)
                             Text(
                                 text = uid,
                                 style = MaterialTheme.typography.bodySmall,
@@ -170,6 +188,27 @@ fun ContactsScreen(
                                 modifier = Modifier.padding(top = 4.dp)
                             )
                         }
+                    }
+                    DropdownMenu(
+                        expanded = menuTarget.value == uid,
+                        onDismissRequest = { menuTarget.value = null }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("备注") },
+                            onClick = {
+                                editTarget.value = uid to displayName
+                                editRemark.value = displayName
+                                editBackground.value = contact.chatBackground
+                                menuTarget.value = null
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("删除") },
+                            onClick = {
+                                deleteTarget.value = uid
+                                menuTarget.value = null
+                            }
+                        )
                     }
                 }
                 Divider(color = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f))
@@ -189,6 +228,24 @@ fun ContactsScreen(
                         onValueChange = { editRemark.value = it },
                         label = { Text("备注") }
                     )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(text = "聊天背景")
+                    Column {
+                        backgroundOptions.forEach { option ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                RadioButton(
+                                    selected = editBackground.value == option.id,
+                                    onClick = { editBackground.value = option.id }
+                                )
+                                Text(text = option.label, modifier = Modifier.padding(start = 8.dp))
+                            }
+                        }
+                    }
                 }
             },
             confirmButton = {
@@ -196,8 +253,10 @@ fun ContactsScreen(
                     val target = editTarget.value
                     if (target != null) {
                         val uid = target.first
-                        viewModel.updateRemark(uid, editRemark.value.trim()) { success ->
+                        val remark = editRemark.value.trim()
+                        viewModel.updateRemark(uid, remark) { success ->
                             if (success) {
+                                viewModel.updateBackground(uid, editBackground.value) { _ -> }
                                 Toast.makeText(context, "备注已更新", Toast.LENGTH_SHORT).show()
                             } else {
                                 Toast.makeText(context, "更新失败", Toast.LENGTH_SHORT).show()
@@ -223,11 +282,38 @@ fun ContactsScreen(
             }
         )
     }
+
+    if (deleteTarget.value != null) {
+        AlertDialog(
+            onDismissRequest = { deleteTarget.value = null },
+            title = { Text("删除联系人") },
+            text = { Text("确定删除该联系人吗？聊天记录将从列表移除。") },
+            confirmButton = {
+                TextButton(onClick = {
+                    val uid = deleteTarget.value.orEmpty()
+                    viewModel.deleteContact(uid) { success ->
+                        val message = if (success) "已删除联系人" else "删除失败"
+                        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                    }
+                    UnreadCounter.clear(context, uid)
+                    deleteTarget.value = null
+                }) {
+                    Text("删除")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleteTarget.value = null }) {
+                    Text("取消")
+                }
+            }
+        )
+    }
 }
 
 @Composable
 private fun AvatarPlaceholder(text: String, modifier: Modifier = Modifier) {
-    val initial = text.trim().firstOrNull()?.toString()?.uppercase().orEmpty()
+    val trimmed = text.trim()
+    val initial = trimmed.firstOrNull()?.toString()?.uppercase().orEmpty()
     Box(
         modifier = modifier
             .clip(CircleShape)

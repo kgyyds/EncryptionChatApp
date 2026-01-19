@@ -1,9 +1,11 @@
 package com.kgapp.encryptionchat.data.sync
 
+import android.content.Context
 import android.util.Log
 import com.kgapp.encryptionchat.data.ChatRepository
 import com.kgapp.encryptionchat.data.api.SseChatApi
 import com.kgapp.encryptionchat.util.PullMode
+import com.kgapp.encryptionchat.util.UnreadCounter
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -20,6 +22,7 @@ import java.time.Instant
 
 class MessageSyncManager(
     private val repository: ChatRepository,
+    private val context: Context,
     private val sseApi: SseChatApi = SseChatApi()
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -29,6 +32,7 @@ class MessageSyncManager(
     private var currentCall: Call? = null
     private var currentMode: PullMode = PullMode.CHAT_SSE
     private var lastActiveChatUid: String? = null
+    private var activeChatUid: String? = null
 
     private val _updates = MutableSharedFlow<String>(extraBufferCapacity = 1)
     val updates: SharedFlow<String> = _updates
@@ -51,6 +55,9 @@ class MessageSyncManager(
             else -> {
                 if (result.addedCount > 0) {
                     _updates.tryEmit(fromUid)
+                    if (activeChatUid != fromUid) {
+                        UnreadCounter.increment(context, fromUid)
+                    }
                 }
                 null
             }
@@ -71,7 +78,8 @@ class MessageSyncManager(
 
     fun updateMode(mode: PullMode, activeChatUid: String?) {
         currentMode = mode
-        if (activeChatUid != null) {
+        this.activeChatUid = activeChatUid
+        if (!activeChatUid.isNullOrBlank()) {
             lastActiveChatUid = activeChatUid
         }
         scope.launch {
@@ -183,6 +191,9 @@ class MessageSyncManager(
         }
         if (result.success) {
             _updates.tryEmit(fromUid)
+            if (activeChatUid != fromUid) {
+                UnreadCounter.increment(context, fromUid)
+            }
         }
     }
 

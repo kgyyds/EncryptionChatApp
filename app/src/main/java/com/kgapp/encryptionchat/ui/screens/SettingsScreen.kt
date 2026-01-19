@@ -41,6 +41,8 @@ import com.kgapp.encryptionchat.ui.viewmodel.RepositoryViewModelFactory
 import com.kgapp.encryptionchat.ui.viewmodel.SettingsViewModel
 import com.kgapp.encryptionchat.util.MessagePullPreferences
 import com.kgapp.encryptionchat.util.PullMode
+import com.kgapp.encryptionchat.util.TimeDisplayPreferences
+import com.kgapp.encryptionchat.util.TimeDisplayMode
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -54,6 +56,7 @@ fun SettingsScreen(
     val viewModel: SettingsViewModel = viewModel(factory = RepositoryViewModelFactory(repository))
     val state = viewModel.state.collectAsStateWithLifecycle()
     val pullMode = MessagePullPreferences.mode.collectAsStateWithLifecycle()
+    val timeMode = TimeDisplayPreferences.mode.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     Scaffold(
@@ -77,6 +80,7 @@ fun SettingsScreen(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
             ) {
+                SectionTitle("安全")
                 SettingsRow(
                     title = "安全",
                     subtitle = "胁迫模式与解锁",
@@ -90,7 +94,12 @@ fun SettingsScreen(
                     icon = Icons.Outlined.Security,
                     onClick = onOpenKeyManagement
                 )
-                Divider(color = MaterialTheme.colorScheme.surfaceVariant)
+            }
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                SectionTitle("外观")
                 SettingsRow(
                     title = "主题设置",
                     subtitle = "跟随系统/暗色/亮色",
@@ -98,6 +107,47 @@ fun SettingsScreen(
                     onClick = onOpenThemeSettings
                 )
                 Divider(color = MaterialTheme.colorScheme.surfaceVariant)
+                TimeDisplayRow(
+                    title = "消息时间显示",
+                    selected = timeMode.value,
+                    onSelect = { mode -> TimeDisplayPreferences.setMode(context, mode) }
+                )
+            }
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                SectionTitle("消息拉取")
+                PullModeRow(
+                    title = "手动刷新",
+                    selected = pullMode.value == PullMode.MANUAL,
+                    onSelect = {
+                        MessagePullPreferences.setMode(context, PullMode.MANUAL)
+                        messageSyncManager.updateMode(PullMode.MANUAL, null)
+                    }
+                )
+                PullModeRow(
+                    title = "聊天 SSE",
+                    selected = pullMode.value == PullMode.CHAT_SSE,
+                    onSelect = {
+                        MessagePullPreferences.setMode(context, PullMode.CHAT_SSE)
+                        messageSyncManager.updateMode(PullMode.CHAT_SSE, null)
+                    }
+                )
+                PullModeRow(
+                    title = "全局 SSE",
+                    selected = pullMode.value == PullMode.GLOBAL_SSE,
+                    onSelect = {
+                        MessagePullPreferences.setMode(context, PullMode.GLOBAL_SSE)
+                        messageSyncManager.updateMode(PullMode.GLOBAL_SSE, null)
+                    }
+                )
+            }
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                SectionTitle("关于")
                 SettingsRow(
                     title = "关于",
                     subtitle = "开发中",
@@ -183,6 +233,50 @@ private fun PullModeRow(
             .fillMaxWidth()
             .clickable { onSelect() }
             .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(text = title, modifier = Modifier.weight(1f))
+        RadioButton(selected = selected, onClick = onSelect)
+    }
+}
+
+@Composable
+private fun TimeDisplayRow(
+    title: String,
+    selected: TimeDisplayMode,
+    onSelect: (TimeDisplayMode) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+    ) {
+        Text(text = title, style = MaterialTheme.typography.titleSmall)
+        Column(modifier = Modifier.padding(top = 8.dp)) {
+            TimeDisplayOption("相对时间", selected == TimeDisplayMode.RELATIVE) {
+                onSelect(TimeDisplayMode.RELATIVE)
+            }
+            TimeDisplayOption("绝对时间", selected == TimeDisplayMode.ABSOLUTE) {
+                onSelect(TimeDisplayMode.ABSOLUTE)
+            }
+            TimeDisplayOption("自动", selected == TimeDisplayMode.AUTO) {
+                onSelect(TimeDisplayMode.AUTO)
+            }
+        }
+    }
+}
+
+@Composable
+private fun TimeDisplayOption(
+    title: String,
+    selected: Boolean,
+    onSelect: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onSelect() }
+            .padding(vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(text = title, modifier = Modifier.weight(1f))
