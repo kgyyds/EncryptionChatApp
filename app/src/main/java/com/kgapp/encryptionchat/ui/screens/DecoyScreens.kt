@@ -35,17 +35,34 @@ import androidx.compose.ui.unit.dp
 import com.kgapp.encryptionchat.ui.components.MessageBubble
 import com.kgapp.encryptionchat.security.DuressAction
 
-data class DecoyChatItem(
-    val uid: String,
-    val name: String,
-    val lastText: String,
+data class DecoyConversation(
+    val id: String,
+    val title: String,
+    val lastMessage: String,
     val lastTime: String
 )
 
-private val decoyChats = listOf(
-    DecoyChatItem(uid = "d1", name = "小李", lastText = "今晚一起吃饭吗？", lastTime = "12:48"),
-    DecoyChatItem(uid = "d2", name = "快递", lastText = "您的包裹已放在门口。", lastTime = "昨天"),
-    DecoyChatItem(uid = "d3", name = "小组", lastText = "周报已更新。", lastTime = "周二")
+data class DecoyMessage(
+    val conversationId: String,
+    val speaker: Int,
+    val text: String,
+    val time: String
+)
+
+private val decoyConversations = listOf(
+    DecoyConversation(id = "c1", title = "小李", lastMessage = "今晚一起吃饭吗？", lastTime = "12:48"),
+    DecoyConversation(id = "c2", title = "快递", lastMessage = "您的包裹已放在门口。", lastTime = "昨天"),
+    DecoyConversation(id = "c3", title = "小组", lastMessage = "周报已更新。", lastTime = "周二")
+)
+
+private val decoyMessages = listOf(
+    DecoyMessage(conversationId = "c1", speaker = 1, text = "今晚一起吃饭吗？", time = "12:46"),
+    DecoyMessage(conversationId = "c1", speaker = 0, text = "可以，几点？", time = "12:47"),
+    DecoyMessage(conversationId = "c1", speaker = 1, text = "12:48见", time = "12:48"),
+    DecoyMessage(conversationId = "c2", speaker = 1, text = "您的包裹已放在门口。", time = "昨天"),
+    DecoyMessage(conversationId = "c2", speaker = 0, text = "收到，谢谢。", time = "昨天"),
+    DecoyMessage(conversationId = "c3", speaker = 1, text = "周报已更新。", time = "周二"),
+    DecoyMessage(conversationId = "c3", speaker = 1, text = "请大家查看。", time = "周二")
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -64,18 +81,18 @@ fun DecoyHomeScreen(onOpenChat: (String) -> Unit) {
             modifier = Modifier.fillMaxSize().padding(padding),
             contentPadding = PaddingValues(12.dp)
         ) {
-            items(decoyChats) { item ->
+            items(decoyConversations) { item ->
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(vertical = 10.dp)
-                        .clickable { onOpenChat(item.uid) },
+                        .clickable { onOpenChat(item.id) },
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(text = item.name, style = MaterialTheme.typography.titleMedium)
+                        Text(text = item.title, style = MaterialTheme.typography.titleMedium)
                         Text(
-                            text = item.lastText,
+                            text = item.lastMessage,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -93,17 +110,14 @@ fun DecoyHomeScreen(onOpenChat: (String) -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DecoyChatScreen(name: String, onBack: () -> Unit) {
-    val messages = listOf(
-        Triple("好久不见～", 1, "12:41"),
-        Triple("最近在忙什么？", 1, "12:42"),
-        Triple("刚开完会。", 0, "12:43")
-    )
+fun DecoyChatScreen(conversationId: String, onBack: () -> Unit) {
+    val conversation = decoyConversations.firstOrNull { it.id == conversationId }
+    val messages = decoyMessages.filter { it.conversationId == conversationId }
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = { Text(name) },
+                title = { Text(conversation?.title ?: "聊天") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Back")
@@ -118,8 +132,8 @@ fun DecoyChatScreen(name: String, onBack: () -> Unit) {
             contentPadding = PaddingValues(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            items(messages) { (text, speaker, time) ->
-                MessageBubble(text = text, speaker = speaker, timestamp = time)
+            items(messages) { message ->
+                MessageBubble(text = message.text, speaker = message.speaker, timestamp = message.time)
             }
         }
     }
@@ -185,8 +199,7 @@ fun DecoyTabs(
         Column(modifier = Modifier.padding(padding)) {
             when {
                 activeChatId != null -> {
-                    val name = decoyChats.firstOrNull { it.uid == activeChatId }?.name ?: "聊天"
-                    DecoyChatScreen(name = name, onBack = onBackFromChat)
+                    DecoyChatScreen(conversationId = activeChatId, onBack = onBackFromChat)
                 }
                 duressAction == DuressAction.HIDE -> {
                     HideHomeScreen()

@@ -53,8 +53,8 @@ sealed class Screen(val route: String) {
     data object ThemeSettings : Screen("theme_settings")
     data object SecuritySettings : Screen("security_settings")
     data object DecoyTabs : Screen("decoy_tabs")
-    data object DecoyChat : Screen("decoy_chat/{id}") {
-        fun createRoute(id: String) = "decoy_chat/$id"
+    data object DecoyChat : Screen("decoy/chat/{cid}") {
+        fun createRoute(cid: String) = "decoy/chat/$cid"
     }
     data object Debug : Screen("debug")
     data object Chat : Screen("chat/{uid}") {
@@ -166,7 +166,7 @@ fun EncryptionChatApp(repository: ChatRepository) {
                 }
                 return@composable
             }
-            val id = backStackEntry.arguments?.getString("id")
+            val id = backStackEntry.arguments?.getString("cid")
             DecoyTabs(
                 duressAction = duressAction,
                 onOpenChat = { navController.navigate(Screen.DecoyChat.createRoute(it)) },
