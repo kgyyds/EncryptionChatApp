@@ -26,10 +26,11 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.background
@@ -40,9 +41,12 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import android.widget.Toast
 import com.kgapp.encryptionchat.data.ChatRepository
+import com.kgapp.encryptionchat.data.sync.MessageSyncManager
 import com.kgapp.encryptionchat.ui.components.MessageBubble
 import com.kgapp.encryptionchat.ui.viewmodel.ChatViewModel
 import com.kgapp.encryptionchat.ui.viewmodel.RepositoryViewModelFactory
+import com.kgapp.encryptionchat.util.MessagePullPreferences
+import com.kgapp.encryptionchat.util.PullMode
 import kotlinx.coroutines.launch
 import androidx.compose.material3.MaterialTheme
 
@@ -50,11 +54,13 @@ import androidx.compose.material3.MaterialTheme
 @Composable
 fun ChatScreen(
     repository: ChatRepository,
+    messageSyncManager: MessageSyncManager,
     uid: String,
     onBack: () -> Unit
 ) {
     val viewModel: ChatViewModel = viewModel(factory = RepositoryViewModelFactory(repository))
     val state = viewModel.state.collectAsStateWithLifecycle()
+    val pullMode = MessagePullPreferences.mode.collectAsStateWithLifecycle()
     val inputState = remember { mutableStateOf("") }
     val listState = rememberLazyListState()
     val context = LocalContext.current
@@ -71,10 +77,27 @@ fun ChatScreen(
 
     LaunchedEffect(uid) {
         viewModel.load(uid)
-        scope.launch {
-            val message = viewModel.readNewMessages(showNoNewMessageHint = false)
-            if (!message.isNullOrBlank()) {
-                Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+        messageSyncManager.updateMode(pullMode.value, uid)
+    }
+
+    LaunchedEffect(pullMode.value, uid) {
+        messageSyncManager.updateMode(pullMode.value, uid)
+    }
+
+    LaunchedEffect(uid) {
+        messageSyncManager.updates.collect { updatedUid ->
+            if (updatedUid == uid) {
+                viewModel.refresh()
+            }
+        }
+    }
+
+    DisposableEffect(uid, pullMode.value) {
+        onDispose {
+            if (pullMode.value == PullMode.CHAT_SSE) {
+                scope.launch { messageSyncManager.stopSse() }
+            } else {
+                messageSyncManager.updateMode(pullMode.value, null)
             }
         }
     }
@@ -111,15 +134,17 @@ fun ChatScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = {
-                        scope.launch {
-                            val message = viewModel.readNewMessages(showNoNewMessageHint = true)
-                            if (!message.isNullOrBlank()) {
-                                Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                    if (pullMode.value != PullMode.GLOBAL_SSE) {
+                        IconButton(onClick = {
+                            scope.launch {
+                                val message = messageSyncManager.refreshOnce(uid)
+                                if (!message.isNullOrBlank()) {
+                                    Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                                }
                             }
+                        }) {
+                            Icon(imageVector = Icons.Default.Refresh, contentDescription = "Refresh")
                         }
-                    }) {
-                        Icon(imageVector = Icons.Default.Refresh, contentDescription = "Refresh")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
