@@ -1,0 +1,5 @@
+<resources>
+    <style name="Theme.EncryptionChat" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="android:windowBackground">#0B0B0F</item>
+    </style>
+</resources>
