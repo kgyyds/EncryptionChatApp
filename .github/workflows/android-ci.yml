@@ -29,33 +29,34 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 
-      - name: Build APK
+      # 关键：把你 Secrets 里的 base64 keystore 还原成文件
+      - name: Decode keystore
         run: |
-          if [ "${{ github.ref_type }}" = "tag" ]; then
-            echo "Tag build -> assembleRelease"
-            ./gradlew assembleRelease
-          else
-            echo "Branch/PR build -> assembleDebug"
-            ./gradlew assembleDebug
-          fi
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > $GITHUB_WORKSPACE/release.jks
+          ls -lah $GITHUB_WORKSPACE/release.jks
 
-      - name: Upload Debug APK (PR/branch)
-        if: github.ref_type != 'tag'
-        uses: actions/upload-artifact@v4
-        with:
-          name: app-debug-apk-${{ github.run_number }}
-          path: app/build/outputs/apk/debug/*.apk
-          if-no-files-found: error
+      # 关键：所有构建都只走 Release + 固定签名
+      - name: Build Release APK (signed)
+        env:
+          KEYSTORE_PATH: ${{ github.workspace }}/release.jks
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          ./gradlew assembleRelease \
+            -Pandroid.injected.signing.store.file="$KEYSTORE_PATH" \
+            -Pandroid.injected.signing.store.password="$KEYSTORE_PASSWORD" \
+            -Pandroid.injected.signing.key.alias="$KEY_ALIAS" \
+            -Pandroid.injected.signing.key.password="$KEY_PASSWORD"
 
-      - name: Upload Release APK (tag)
-        if: github.ref_type == 'tag'
+      - name: Upload Release APK (all runs)
         uses: actions/upload-artifact@v4
         with:
           name: app-release-apk-${{ github.run_number }}
           path: app/build/outputs/apk/release/*.apk
           if-no-files-found: error
 
-      - name: Create GitHub Release (tag)
+      - name: Create GitHub Release (tag only)
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
@@ -72,7 +73,7 @@ jobs:
           curl -L https://gosspublic.alicdn.com/ossutil/1.7.9/ossutil64 -o /usr/local/bin/ossutil
           chmod +x /usr/local/bin/ossutil
 
-      - name: Upload Release APK to OSS
+      - name: Upload Release APK to OSS (tag only)
         if: startsWith(github.ref, 'refs/tags/')
         env:
           OSS_KEY: ${{ secrets.ALI_OSS_KEY }}
