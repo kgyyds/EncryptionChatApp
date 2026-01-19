@@ -65,4 +65,16 @@ class SettingsViewModel(
     suspend fun exportPublicKey(): String {
         return repository.getPublicPemText().orEmpty()
     }
+
+    suspend fun exportPrivateKey(): String {
+        return repository.getPrivatePemText().orEmpty()
+    }
+
+    fun clearKeyPair(onComplete: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            val success = repository.clearKeyPair()
+            refresh()
+            onComplete(success)
+        }
+    }
 }

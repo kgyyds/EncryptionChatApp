@@ -77,6 +77,18 @@ fun SecuritySettingsScreen(onBack: () -> Unit) {
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
             ) {
                 RowItem(
+                    title = "启用应用锁",
+                    trailing = {
+                        Switch(
+                            checked = config.value.appLockEnabled,
+                            onCheckedChange = {
+                                SecuritySettings.setAppLockEnabled(context, it)
+                                config.value = SecuritySettings.readConfig(context)
+                            }
+                        )
+                    }
+                )
+                RowItem(
                     title = "启用胁迫模式",
                     trailing = {
                         Switch(
