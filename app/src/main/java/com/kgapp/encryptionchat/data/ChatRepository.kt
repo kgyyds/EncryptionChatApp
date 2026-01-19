@@ -311,4 +311,30 @@ class ChatRepository(
         val mutex = chatLocks.getOrPut(uid) { Mutex() }
         return mutex.withLock { block() }
     }
+
+    data class IncomingResult(
+        val success: Boolean,
+        val message: String? = null,
+        val handshakeFailed: Boolean = false
+    )
+
+    suspend fun handleIncomingCipherMessage(uid: String, ts: Long, cipherText: String): IncomingResult =
+        withContext(Dispatchers.IO) {
+            val config = storage.readContactsConfig()
+            val contact = config[uid]
+                ?: return@withContext IncomingResult(false, "联系人不存在", false)
+            val password = contact.pass
+            val plain = crypto.decryptText(cipherText)
+            val match = Regex("\\[pass=(.*?)\\]").find(plain)
+            val pwd = match?.groupValues?.getOrNull(1) ?: ""
+            val cleanText = plain.replaceFirst(Regex("\\[pass=.*?\\]"), "").trimStart()
+            if (pwd != password) {
+                return@withContext IncomingResult(false, "握手密码错误", true)
+            }
+            if (ts <= 0L || cleanText.isBlank()) {
+                return@withContext IncomingResult(false, "消息格式异常", false)
+            }
+            storage.upsertChatMessage(uid, ts.toString(), ChatMessage(Spokesman = 1, text = cleanText))
+            return@withContext IncomingResult(true, null, false)
+        }
 }
