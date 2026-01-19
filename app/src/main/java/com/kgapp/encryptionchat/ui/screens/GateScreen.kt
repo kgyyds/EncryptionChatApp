@@ -1,7 +1,11 @@
 package com.kgapp.encryptionchat.ui.screens
 
+import android.app.Activity
+import android.app.KeyguardManager
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
@@ -11,36 +15,36 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.FragmentActivity
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.kgapp.encryptionchat.security.AuthMode
 import com.kgapp.encryptionchat.security.DuressAction
 import com.kgapp.encryptionchat.security.SecuritySettings
 import com.kgapp.encryptionchat.security.SessionState
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -49,9 +53,17 @@ fun GateScreen(onUnlocked: () -> Unit) {
     val activity = context as? FragmentActivity
     val config = remember { mutableStateOf(SecuritySettings.readConfig(context)) }
     val pinInput = remember { mutableStateOf("") }
-    val snackbarHostState = remember { SnackbarHostState() }
-    val promptShown = remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
+    val inFlight = remember { mutableStateOf(false) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val keyguardLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        inFlight.value = false
+        if (result.resultCode == Activity.RESULT_OK) {
+            SessionState.unlockNormal()
+            onUnlocked()
+        } else {
+            Toast.makeText(context, "认证失败", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     BackHandler {
         activity?.finish()
@@ -64,27 +76,55 @@ fun GateScreen(onUnlocked: () -> Unit) {
         }
     }
 
-    LaunchedEffect(config.value.authMode, config.value.duressEnabled) {
-        if (config.value.duressEnabled && config.value.authMode == AuthMode.SYSTEM && activity != null && !promptShown.value) {
-            promptShown.value = true
-            val canAuth = BiometricManager.from(activity).canAuthenticate(
-                BiometricManager.Authenticators.BIOMETRIC_STRONG or
-                    BiometricManager.Authenticators.DEVICE_CREDENTIAL
-            )
-            if (canAuth == BiometricManager.BIOMETRIC_SUCCESS) {
-                triggerBiometric(activity) { success ->
-                    if (success) {
-                        SessionState.unlockNormal()
-                        onUnlocked()
-                    } else {
-                        scope.launch { snackbarHostState.showSnackbar("认证失败") }
-                    }
+    fun triggerSystemAuth() {
+        if (activity == null || !config.value.duressEnabled || config.value.authMode != AuthMode.SYSTEM) return
+        if (inFlight.value) return
+        inFlight.value = true
+        val biometricManager = BiometricManager.from(activity)
+        val authenticators = BiometricManager.Authenticators.BIOMETRIC_STRONG or
+            BiometricManager.Authenticators.DEVICE_CREDENTIAL
+        val canAuth = biometricManager.canAuthenticate(authenticators)
+        if (canAuth == BiometricManager.BIOMETRIC_SUCCESS) {
+            triggerBiometric(activity, authenticators) { success ->
+                inFlight.value = false
+                if (success) {
+                    SessionState.unlockNormal()
+                    onUnlocked()
+                } else {
+                    Toast.makeText(context, "认证失败", Toast.LENGTH_SHORT).show()
                 }
-            } else {
-                SecuritySettings.setAuthMode(context, AuthMode.PIN)
-                config.value = SecuritySettings.readConfig(context)
-                scope.launch { snackbarHostState.showSnackbar("请先设置系统锁屏或生物识别") }
             }
+            return
+        }
+        val keyguardManager = context.getSystemService(KeyguardManager::class.java)
+        if (keyguardManager?.isDeviceSecure == true) {
+            val intent = keyguardManager.createConfirmDeviceCredentialIntent("验证身份", "使用锁屏密码解锁")
+            if (intent != null) {
+                keyguardLauncher.launch(intent)
+                return
+            }
+        }
+        inFlight.value = false
+        Toast.makeText(context, "未设置系统锁屏，无法使用系统认证", Toast.LENGTH_SHORT).show()
+    }
+
+    LaunchedEffect(config.value.authMode, config.value.duressEnabled) {
+        if (config.value.duressEnabled && config.value.authMode == AuthMode.SYSTEM && activity != null) {
+            triggerSystemAuth()
+        }
+    }
+
+    DisposableEffect(lifecycleOwner, config.value.authMode, config.value.duressEnabled) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME || event == Lifecycle.Event.ON_START) {
+                if (!SessionState.unlocked.value && config.value.authMode == AuthMode.SYSTEM && config.value.duressEnabled) {
+                    triggerSystemAuth()
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
         }
     }
 
@@ -95,8 +135,7 @@ fun GateScreen(onUnlocked: () -> Unit) {
                 title = { Text("解锁") },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
             )
-        },
-        snackbarHost = { SnackbarHost(snackbarHostState) }
+        }
     ) { padding ->
         Column(
             modifier = Modifier
@@ -105,8 +144,9 @@ fun GateScreen(onUnlocked: () -> Unit) {
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            if (config.value.authMode == AuthMode.PIN || config.value.duressEnabled) {
+            if (config.value.authMode == AuthMode.PIN) {
                 PinDots(pinInput.value, modifier = Modifier.fillMaxWidth())
+                Spacer(modifier = Modifier.weight(1f))
                 PinKeypad(
                     onDigit = { digit ->
                         if (pinInput.value.length < 6) {
@@ -142,7 +182,7 @@ fun GateScreen(onUnlocked: () -> Unit) {
                             }
                             else -> {
                                 pinInput.value = ""
-                                scope.launch { snackbarHostState.showSnackbar("PIN 错误") }
+                                Toast.makeText(context, "PIN 错误", Toast.LENGTH_SHORT).show()
                             }
                         }
                     }
@@ -152,7 +192,11 @@ fun GateScreen(onUnlocked: () -> Unit) {
     }
 }
 
-private fun triggerBiometric(activity: FragmentActivity, onResult: (Boolean) -> Unit) {
+private fun triggerBiometric(
+    activity: FragmentActivity,
+    authenticators: Int,
+    onResult: (Boolean) -> Unit
+) {
     val executor = ContextCompat.getMainExecutor(activity)
     val prompt = BiometricPrompt(activity, executor, object : BiometricPrompt.AuthenticationCallback() {
         override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
@@ -170,10 +214,7 @@ private fun triggerBiometric(activity: FragmentActivity, onResult: (Boolean) -> 
     val promptInfo = BiometricPrompt.PromptInfo.Builder()
         .setTitle("验证身份")
         .setSubtitle("使用系统认证解锁")
-        .setAllowedAuthenticators(
-            BiometricManager.Authenticators.BIOMETRIC_STRONG or
-                BiometricManager.Authenticators.DEVICE_CREDENTIAL
-        )
+        .setAllowedAuthenticators(authenticators)
         .build()
     prompt.authenticate(promptInfo)
 }
@@ -221,7 +262,8 @@ private fun PinKeypad(
                             FilledTonalButton(
                                 onClick = {},
                                 enabled = false,
-                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)
+                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                                modifier = Modifier.size(72.dp)
                             ) {
                                 Text(" ")
                             }
@@ -229,7 +271,8 @@ private fun PinKeypad(
                         "⌫" -> {
                             FilledTonalButton(
                                 onClick = onDelete,
-                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)
+                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                                modifier = Modifier.size(72.dp)
                             ) {
                                 Text("删除")
                             }
@@ -237,7 +280,8 @@ private fun PinKeypad(
                         else -> {
                             FilledTonalButton(
                                 onClick = { onDigit(label) },
-                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)
+                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                                modifier = Modifier.size(72.dp)
                             ) {
                                 Text(label)
                             }
