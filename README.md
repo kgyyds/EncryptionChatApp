@@ -23,6 +23,9 @@ contacts/chats/<uid>.json
 - Signing: `SHA256withRSA` (PKCS#1 v1.5).
 
 ## Build
+- Ensure `ANDROID_HOME` (or `sdk.dir` in `local.properties`) points to a valid Android SDK install.
+- Install required SDK components (example):
+  - `sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"`
 - `./gradlew assembleDebug`
 
 ## Minimum environment

@@ -13,18 +13,26 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import com.kgapp.encryptionchat.data.ChatRepository
 import com.kgapp.encryptionchat.data.api.ChatApi
 import com.kgapp.encryptionchat.data.crypto.CryptoManager
+import com.kgapp.encryptionchat.data.sync.MessageSyncManager
 import com.kgapp.encryptionchat.data.storage.FileStorage
+import com.kgapp.encryptionchat.util.MessagePullPreferences
 import com.kgapp.encryptionchat.util.ThemeMode
 import com.kgapp.encryptionchat.util.ThemePreferences
+import com.kgapp.encryptionchat.util.TimeDisplayPreferences
+import com.kgapp.encryptionchat.util.UnreadCounter
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         ThemePreferences.initialize(this)
+        MessagePullPreferences.initialize(this)
+        TimeDisplayPreferences.initialize(this)
+        UnreadCounter.initialize(this)
         val storage = FileStorage(this)
         val crypto = CryptoManager(storage)
         val api = ChatApi()
         val repository = ChatRepository(storage, crypto, api)
+        val messageSyncManager = MessageSyncManager(repository, applicationContext)
         setContent {
             val themeMode by ThemePreferences.themeMode.collectAsState()
             val darkTheme = when (themeMode) {
@@ -46,7 +54,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
             EncryptionChatTheme(themeMode) {
-                EncryptionChatApp(repository)
+                EncryptionChatApp(repository, messageSyncManager)
             }
         }
     }

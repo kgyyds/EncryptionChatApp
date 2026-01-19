@@ -25,10 +25,15 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Icon
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -39,23 +44,42 @@ import androidx.compose.ui.draw.clip
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kgapp.encryptionchat.data.ChatRepository
+import com.kgapp.encryptionchat.data.sync.MessageSyncManager
 import com.kgapp.encryptionchat.ui.viewmodel.RecentViewModel
 import com.kgapp.encryptionchat.ui.viewmodel.RepositoryViewModelFactory
+import com.kgapp.encryptionchat.util.MessagePullPreferences
+import com.kgapp.encryptionchat.util.PullMode
+import com.kgapp.encryptionchat.util.UnreadCounter
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun RecentScreen(
     repository: ChatRepository,
+    messageSyncManager: MessageSyncManager,
     onOpenChat: (String) -> Unit
 ) {
     val viewModel: RecentViewModel = viewModel(factory = RepositoryViewModelFactory(repository))
     val state = viewModel.state.collectAsStateWithLifecycle()
+    val pullMode = MessagePullPreferences.mode.collectAsStateWithLifecycle()
+    val unreadCounts = UnreadCounter.counts.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
     val context = LocalContext.current
     val deleteTarget = remember { mutableStateOf<RecentViewModel.RecentItem?>(null) }
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
         viewModel.refresh()
+    }
+
+    LaunchedEffect(pullMode.value) {
+        messageSyncManager.updateMode(pullMode.value, null)
+    }
+
+    LaunchedEffect(Unit) {
+        messageSyncManager.updates.collect {
+            viewModel.refresh()
+        }
     }
 
     Scaffold(
@@ -63,6 +87,21 @@ fun RecentScreen(
         topBar = {
             TopAppBar(
                 title = { Text("最近聊天") },
+                actions = {
+                    if (pullMode.value != PullMode.GLOBAL_SSE) {
+                        IconButton(onClick = {
+                            scope.launch {
+                                val message = messageSyncManager.refreshRecentChats()
+                                if (!message.isNullOrBlank()) {
+                                    Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                                }
+                                viewModel.refresh()
+                            }
+                        }) {
+                            Icon(imageVector = Icons.Default.Refresh, contentDescription = "Refresh")
+                        }
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
             )
         }
@@ -73,6 +112,8 @@ fun RecentScreen(
             contentPadding = PaddingValues(12.dp)
         ) {
             items(state.value.items, key = { it.uid }) { item ->
+                val displayName = item.remark.ifBlank { item.uid }
+                val unread = unreadCounts.value[item.uid] ?: 0
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -88,10 +129,14 @@ fun RecentScreen(
                             .padding(horizontal = 8.dp, vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        AvatarPlaceholder(text = item.remark, modifier = Modifier.size(44.dp))
+                        AvatarPlaceholder(
+                            text = displayName,
+                            unreadCount = unread,
+                            modifier = Modifier.size(44.dp)
+                        )
                         Spacer(modifier = Modifier.size(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(text = item.remark, style = MaterialTheme.typography.titleMedium)
+                            Text(text = displayName, style = MaterialTheme.typography.titleMedium)
                             Text(
                                 text = item.lastText,
                                 style = MaterialTheme.typography.bodySmall,
@@ -115,6 +160,7 @@ fun RecentScreen(
                             text = { Text("删除聊天记录") },
                             onClick = {
                                 viewModel.deleteChat(item.uid)
+                                UnreadCounter.clear(context, item.uid)
                                 Toast.makeText(context, "已删除聊天记录", Toast.LENGTH_SHORT).show()
                                 deleteTarget.value = null
                             }
@@ -128,19 +174,42 @@ fun RecentScreen(
 }
 
 @Composable
-private fun AvatarPlaceholder(text: String, modifier: Modifier = Modifier) {
+private fun AvatarPlaceholder(
+    text: String,
+    unreadCount: Int,
+    modifier: Modifier = Modifier
+) {
     val initial = text.trim().firstOrNull()?.toString()?.uppercase().orEmpty()
-    Box(
-        modifier = modifier
-            .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.surface)
-            .padding(2.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = if (initial.isBlank()) "?" else initial,
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
-        )
+    Box(modifier = modifier) {
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.surface)
+                .padding(2.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = if (initial.isBlank()) "?" else initial,
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+            )
+        }
+        if (unreadCount > 0) {
+            val badgeText = if (unreadCount > 99) "99+" else unreadCount.toString()
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.error)
+                    .padding(horizontal = 6.dp, vertical = 2.dp)
+            ) {
+                Text(
+                    text = badgeText,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onError
+                )
+            }
+        }
     }
 }

@@ -3,7 +3,6 @@ package com.kgapp.encryptionchat.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.kgapp.encryptionchat.data.ChatRepository
-import com.kgapp.encryptionchat.util.TimeFormatter
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -17,14 +16,14 @@ class ChatViewModel(
         val uid: String = "",
         val remark: String = "",
         val messages: List<UiMessage> = emptyList(),
-        val hasHistory: Boolean = true
+        val hasHistory: Boolean = true,
+        val backgroundId: String = "default"
     )
 
     data class UiMessage(
         val ts: String,
         val speaker: Int,
-        val text: String,
-        val timeLabel: String
+        val text: String
     )
 
     private val _state = MutableStateFlow(ChatState())
@@ -34,7 +33,9 @@ class ChatViewModel(
         _state.value = _state.value.copy(uid = uid)
         viewModelScope.launch {
             val contacts = repository.readContacts()
-            val remark = contacts[uid]?.Remark ?: uid
+            val contact = contacts[uid]
+            val remark = contact?.Remark ?: uid
+            val backgroundId = contact?.chatBackground ?: "default"
             val history = repository.readChatHistory(uid)
                 .toList()
                 .sortedBy { it.first.toLongOrNull() ?: 0L }
@@ -46,15 +47,15 @@ class ChatViewModel(
                 UiMessage(
                     ts = ts,
                     speaker = message.Spokesman,
-                    text = message.text,
-                    timeLabel = TimeFormatter.formatTimestamp(ts)
+                    text = message.text
                 )
             }
             _state.value = ChatState(
                 uid = uid,
                 remark = remark,
                 messages = uiMessages,
-                hasHistory = filteredHistory.isNotEmpty()
+                hasHistory = filteredHistory.isNotEmpty(),
+                backgroundId = backgroundId
             )
         }
     }

@@ -25,6 +25,7 @@ enum class SessionMode {
 }
 
 data class SecurityConfig(
+    val appLockEnabled: Boolean,
     val duressEnabled: Boolean,
     val authMode: AuthMode,
     val duressAction: DuressAction,
