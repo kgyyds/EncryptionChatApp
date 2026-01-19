@@ -75,16 +75,16 @@ fun GateScreen(onUnlocked: () -> Unit) {
         activity?.finish()
     }
 
-    LaunchedEffect(config.value.duressEnabled) {
-        if (!config.value.duressEnabled) {
-            Log.d(TAG, "Duress disabled, unlocking")
+    LaunchedEffect(config.value.appLockEnabled) {
+        if (!config.value.appLockEnabled) {
+            Log.d(TAG, "App lock disabled, unlocking")
             SessionState.unlockNormal()
             onUnlocked()
         }
     }
 
     fun triggerSystemAuth() {
-        if (activity == null || !config.value.duressEnabled || config.value.authMode != AuthMode.SYSTEM) return
+        if (activity == null || !config.value.appLockEnabled || config.value.authMode != AuthMode.SYSTEM) return
         if (inFlight.value) return
         inFlight.value = true
         systemAuthState.value = SystemAuthState.InProgress
@@ -133,9 +133,9 @@ fun GateScreen(onUnlocked: () -> Unit) {
         Toast.makeText(context, "未设置系统锁屏，无法使用系统认证", Toast.LENGTH_SHORT).show()
     }
 
-    LaunchedEffect(config.value.authMode, config.value.duressEnabled, activity) {
+    LaunchedEffect(config.value.authMode, config.value.appLockEnabled, activity) {
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
-            if (config.value.authMode == AuthMode.SYSTEM && config.value.duressEnabled && !SessionState.unlocked.value) {
+            if (config.value.authMode == AuthMode.SYSTEM && config.value.appLockEnabled && !SessionState.unlocked.value) {
                 triggerSystemAuth()
             }
         }
@@ -157,7 +157,7 @@ fun GateScreen(onUnlocked: () -> Unit) {
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            if (config.value.authMode == AuthMode.PIN) {
+            if (config.value.appLockEnabled && config.value.authMode == AuthMode.PIN) {
                 PinDots(pinInput.value, modifier = Modifier.fillMaxWidth())
                 Spacer(modifier = Modifier.weight(1f))
                 PinKeypad(
@@ -183,7 +183,7 @@ fun GateScreen(onUnlocked: () -> Unit) {
                                 SessionState.unlockNormal()
                                 onUnlocked()
                             }
-                            SecuritySettings.verifyDuressPin(currentConfig, pin) -> {
+                            currentConfig.duressEnabled && SecuritySettings.verifyDuressPin(currentConfig, pin) -> {
                                 val action = currentConfig.duressAction
                                 if (action == DuressAction.WIPE) {
                                     SecuritySettings.wipeSensitiveData(context)
@@ -201,7 +201,7 @@ fun GateScreen(onUnlocked: () -> Unit) {
                     }
                 }
             }
-            if (config.value.authMode == AuthMode.SYSTEM) {
+            if (config.value.appLockEnabled && config.value.authMode == AuthMode.SYSTEM) {
                 val statusText = when (systemAuthState.value) {
                     SystemAuthState.InProgress -> "正在请求系统验证"
                     SystemAuthState.Error -> "验证失败"
