@@ -24,6 +24,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
@@ -70,7 +71,7 @@ fun ChatScreen(
     LaunchedEffect(uid) {
         viewModel.load(uid)
         scope.launch {
-            val message = viewModel.readNewMessages()
+            val message = viewModel.readNewMessages(showNoNewMessageHint = false)
             if (!message.isNullOrBlank()) {
                 Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
             }
@@ -104,7 +105,7 @@ fun ChatScreen(
                 actions = {
                     IconButton(onClick = {
                         scope.launch {
-                            val message = viewModel.readNewMessages()
+                            val message = viewModel.readNewMessages(showNoNewMessageHint = true)
                             if (!message.isNullOrBlank()) {
                                 Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
                             }
@@ -112,7 +113,8 @@ fun ChatScreen(
                     }) {
                         Icon(imageVector = Icons.Default.Refresh, contentDescription = "Refresh")
                     }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
             )
         }
     ) { padding ->

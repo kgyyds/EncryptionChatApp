@@ -1,6 +1,8 @@
 package com.kgapp.encryptionchat.ui.screens
 
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -9,6 +11,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -19,8 +22,9 @@ import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material3.Button
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
@@ -28,15 +32,18 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -44,6 +51,8 @@ import com.kgapp.encryptionchat.data.ChatRepository
 import com.kgapp.encryptionchat.ui.viewmodel.ContactsViewModel
 import com.kgapp.encryptionchat.ui.viewmodel.RepositoryViewModelFactory
 import android.widget.Toast
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -81,13 +90,9 @@ fun ContactsScreen(
                     IconButton(onClick = onOpenDebug) {
                         Icon(imageVector = Icons.Default.BugReport, contentDescription = "Debug")
                     }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
             )
-        },
-        floatingActionButton = {
-            FloatingActionButton(onClick = onAddContact) {
-                Icon(imageVector = Icons.Default.Add, contentDescription = "Add")
-            }
         }
     ) { padding ->
         LazyColumn(
@@ -100,14 +105,28 @@ fun ContactsScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(bottom = 12.dp)
-                        .combinedClickable(onClick = onAddContact, onLongClick = onAddContact)
+                        .combinedClickable(onClick = onAddContact, onLongClick = onAddContact),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
                 ) {
-                    Row(modifier = Modifier.padding(16.dp)) {
-                        Column(modifier = Modifier.weight(1f)) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.surfaceVariant),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(imageVector = Icons.Default.Add, contentDescription = "Add")
+                        }
+                        Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
                             Text(text = "添加联系人")
                             Text(
                                 text = "添加对方 UID / 公钥 / 密码",
-                                style = MaterialTheme.typography.labelSmall
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                             )
                         }
                         Icon(imageVector = Icons.Default.Add, contentDescription = "Add")
@@ -141,17 +160,27 @@ fun ContactsScreen(
                             }
                         )
                 ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text(text = contact.Remark)
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 4.dp)
-                        ) {
-                            Text(text = uid, style = MaterialTheme.typography.labelSmall)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        AvatarPlaceholder(text = contact.Remark, modifier = Modifier.size(44.dp))
+                        Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
+                            Text(text = contact.Remark, style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                text = uid,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
                         }
                     }
                 }
+                Divider(color = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f))
             }
         }
     }
@@ -200,6 +229,24 @@ fun ContactsScreen(
                     Text("复制 UID")
                 }
             }
+        )
+    }
+}
+
+@Composable
+private fun AvatarPlaceholder(text: String, modifier: Modifier = Modifier) {
+    val initial = text.trim().firstOrNull()?.toString()?.uppercase().orEmpty()
+    Box(
+        modifier = modifier
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.surface)
+            .padding(2.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = if (initial.isBlank()) "?" else initial,
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
         )
     }
 }

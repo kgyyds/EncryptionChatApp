@@ -30,6 +30,7 @@ class ChatViewModel(
     val state: StateFlow<ChatState> = _state.asStateFlow()
 
     fun load(uid: String) {
+        _state.value = _state.value.copy(uid = uid)
         viewModelScope.launch {
             val contacts = repository.readContacts()
             val remark = contacts[uid]?.Remark ?: uid
@@ -56,7 +57,7 @@ class ChatViewModel(
 
     suspend fun sendMessage(text: String): String? {
         val uid = _state.value.uid
-        if (uid.isBlank()) return "联系人无效"
+        if (uid.isBlank()) return null
         val localTs = Instant.now().epochSecond.toString()
         repository.appendMessage(uid, localTs, 0, text)
         refresh()
@@ -75,9 +76,9 @@ class ChatViewModel(
         }
     }
 
-    suspend fun readNewMessages(): String? {
+    suspend fun readNewMessages(showNoNewMessageHint: Boolean = true): String? {
         val uid = _state.value.uid
-        if (uid.isBlank()) return "联系人无效"
+        if (uid.isBlank()) return null
         val result = repository.readChat(uid)
         return when {
             result.handshakeFailed -> {
@@ -91,8 +92,10 @@ class ChatViewModel(
                     repository.appendMessage(uid, Instant.now().epochSecond.toString(), 2, message)
                     refresh()
                     message
-                } else {
+                } else if (showNoNewMessageHint) {
                     "无新消息"
+                } else {
+                    null
                 }
             }
             else -> {

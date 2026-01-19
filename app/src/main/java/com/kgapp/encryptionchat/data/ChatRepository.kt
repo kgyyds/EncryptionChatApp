@@ -112,6 +112,10 @@ class ChatRepository(
             val uid = file.nameWithoutExtension
             val history = storage.readChatHistory(uid)
             val lastEntry = history.maxByOrNull { it.key.toLongOrNull() ?: 0L } ?: return@mapNotNull null
+            val lastEpoch = lastEntry.key.toLongOrNull() ?: 0L
+            if (lastEpoch <= 0L) {
+                return@mapNotNull null
+            }
             val remark = contacts[uid]?.Remark ?: uid
             RecentChat(
                 uid = uid,

@@ -38,7 +38,7 @@ class RecentViewModel(
                     uid = item.uid,
                     remark = item.remark,
                     lastText = item.lastText,
-                    lastTime = TimeFormatter.formatTimestamp(item.lastTs),
+                    lastTime = TimeFormatter.formatRecentTimestamp(item.lastTs),
                     lastTs = item.lastTs
                 )
             }
