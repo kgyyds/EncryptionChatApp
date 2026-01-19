@@ -271,6 +271,7 @@ class ChatRepository(
         }
     }
 
+    // Result for incoming encrypted message handling (single definition).
     data class IncomingResult(
         val success: Boolean,
         val message: String? = null,
@@ -305,6 +306,11 @@ class ChatRepository(
         val privateDeleted = privateFile.delete() || !privateFile.exists()
         val publicDeleted = publicFile.delete() || !publicFile.exists()
         privateDeleted && publicDeleted
+    }
+
+    private suspend fun <T> withChatLock(uid: String, block: suspend () -> T): T {
+        val mutex = chatLocks.getOrPut(uid) { Mutex() }
+        return mutex.withLock { block() }
     }
 
     private suspend fun <T> withChatLock(uid: String, block: suspend () -> T): T {
