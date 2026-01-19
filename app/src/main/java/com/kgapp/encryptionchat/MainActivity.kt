@@ -1,0 +1,53 @@
+package com.kgapp.encryptionchat
+
+import android.graphics.Color
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
+import androidx.activity.enableEdgeToEdge
+import androidx.activity.compose.setContent
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.collectAsState
+import androidx.compose.foundation.isSystemInDarkTheme
+import com.kgapp.encryptionchat.data.ChatRepository
+import com.kgapp.encryptionchat.data.api.ChatApi
+import com.kgapp.encryptionchat.data.crypto.CryptoManager
+import com.kgapp.encryptionchat.data.storage.FileStorage
+import com.kgapp.encryptionchat.util.ThemeMode
+import com.kgapp.encryptionchat.util.ThemePreferences
+
+class MainActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        ThemePreferences.initialize(this)
+        val storage = FileStorage(this)
+        val crypto = CryptoManager(storage)
+        val api = ChatApi()
+        val repository = ChatRepository(storage, crypto, api)
+        setContent {
+            val themeMode by ThemePreferences.themeMode.collectAsState()
+            val darkTheme = when (themeMode) {
+                ThemeMode.SYSTEM -> isSystemInDarkTheme()
+                ThemeMode.DARK -> true
+                ThemeMode.LIGHT -> false
+            }
+            SideEffect {
+                if (darkTheme) {
+                    enableEdgeToEdge(
+                        statusBarStyle = SystemBarStyle.dark(Color.BLACK),
+                        navigationBarStyle = SystemBarStyle.dark(Color.BLACK)
+                    )
+                } else {
+                    enableEdgeToEdge(
+                        statusBarStyle = SystemBarStyle.light(Color.WHITE, Color.WHITE),
+                        navigationBarStyle = SystemBarStyle.light(Color.WHITE, Color.WHITE)
+                    )
+                }
+            }
+            EncryptionChatTheme(themeMode) {
+                EncryptionChatApp(repository)
+            }
+        }
+    }
+}
