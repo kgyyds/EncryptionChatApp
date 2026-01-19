@@ -18,6 +18,9 @@ class RepositoryViewModelFactory(
             modelClass.isAssignableFrom(SettingsViewModel::class.java) -> {
                 SettingsViewModel(repository) as T
             }
+            modelClass.isAssignableFrom(RecentViewModel::class.java) -> {
+                RecentViewModel(repository) as T
+            }
             else -> throw IllegalArgumentException("Unknown ViewModel class")
         }
     }

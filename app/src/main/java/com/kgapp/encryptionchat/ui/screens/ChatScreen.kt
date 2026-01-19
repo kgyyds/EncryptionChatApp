@@ -42,7 +42,6 @@ import com.kgapp.encryptionchat.data.ChatRepository
 import com.kgapp.encryptionchat.ui.components.MessageBubble
 import com.kgapp.encryptionchat.ui.viewmodel.ChatViewModel
 import com.kgapp.encryptionchat.ui.viewmodel.RepositoryViewModelFactory
-import com.kgapp.encryptionchat.util.TimeFormatter
 import kotlinx.coroutines.launch
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.ui.graphics.Color
@@ -70,7 +69,12 @@ fun ChatScreen(
 
     LaunchedEffect(uid) {
         viewModel.load(uid)
-        viewModel.readNewMessages()
+        scope.launch {
+            val message = viewModel.readNewMessages()
+            if (!message.isNullOrBlank()) {
+                Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     LaunchedEffect(state.value.messages.size) {
@@ -100,7 +104,10 @@ fun ChatScreen(
                 actions = {
                     IconButton(onClick = {
                         scope.launch {
-                            viewModel.readNewMessages()
+                            val message = viewModel.readNewMessages()
+                            if (!message.isNullOrBlank()) {
+                                Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                            }
                         }
                     }) {
                         Icon(imageVector = Icons.Default.Refresh, contentDescription = "Refresh")
@@ -123,12 +130,11 @@ fun ChatScreen(
                 contentPadding = PaddingValues(12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(state.value.messages, key = { it.first + ":" + it.second.Spokesman }) { (ts, message) ->
-                    val formattedTime = remember(ts) { TimeFormatter.formatTimestamp(ts) }
+                items(state.value.messages, key = { it.ts + ":" + it.speaker }) { message ->
                     MessageBubble(
                         text = message.text,
-                        speaker = message.Spokesman,
-                        timestamp = formattedTime
+                        speaker = message.speaker,
+                        timestamp = message.timeLabel
                     )
                 }
             }

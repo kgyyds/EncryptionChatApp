@@ -70,6 +70,10 @@ class ChatRepository(
         storage.readContactsConfig()
     }
 
+    suspend fun updateContactRemark(uid: String, remark: String): Boolean = withContext(Dispatchers.IO) {
+        storage.updateContactRemark(uid, remark)
+    }
+
     suspend fun readContactsRaw(): String = withContext(Dispatchers.IO) {
         storage.readContactsConfigRaw()
     }
@@ -88,6 +92,35 @@ class ChatRepository(
 
     suspend fun readChatHistory(uid: String): Map<String, ChatMessage> = withContext(Dispatchers.IO) {
         storage.readChatHistory(uid)
+    }
+
+    suspend fun deleteChatHistory(uid: String) = withContext(Dispatchers.IO) {
+        storage.deleteChatHistory(uid)
+    }
+
+    data class RecentChat(
+        val uid: String,
+        val remark: String,
+        val lastText: String,
+        val lastTs: String
+    )
+
+    suspend fun getRecentChats(): List<RecentChat> = withContext(Dispatchers.IO) {
+        val contacts = storage.readContactsConfig()
+        val chatFiles = storage.listChatFiles()
+        val recents = chatFiles.mapNotNull { file ->
+            val uid = file.nameWithoutExtension
+            val history = storage.readChatHistory(uid)
+            val lastEntry = history.maxByOrNull { it.key.toLongOrNull() ?: 0L } ?: return@mapNotNull null
+            val remark = contacts[uid]?.Remark ?: uid
+            RecentChat(
+                uid = uid,
+                remark = remark,
+                lastText = lastEntry.value.text,
+                lastTs = lastEntry.key
+            )
+        }
+        recents.sortedByDescending { it.lastTs.toLongOrNull() ?: 0L }
     }
 
     suspend fun appendMessage(uid: String, ts: String, speaker: Int, text: String) = withContext(Dispatchers.IO) {

@@ -39,4 +39,12 @@ class ContactsViewModel(
             onResult(uid)
         }
     }
+
+    fun updateRemark(uid: String, remark: String, onComplete: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            val success = repository.updateContactRemark(uid, remark)
+            refresh()
+            onComplete(success)
+        }
+    }
 }

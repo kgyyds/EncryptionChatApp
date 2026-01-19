@@ -50,6 +50,19 @@ class FileStorage(private val context: Context) {
 
     fun chatFile(uid: String): File = resolve("contacts/chats/$uid.json")
 
+    fun listChatFiles(): List<File> {
+        val dir = resolve("contacts/chats")
+        if (!dir.exists()) return emptyList()
+        return dir.listFiles { file -> file.extension == "json" }?.toList().orEmpty()
+    }
+
+    fun deleteChatHistory(uid: String) {
+        val file = chatFile(uid)
+        if (file.exists()) {
+            file.delete()
+        }
+    }
+
     fun readContactsConfig(): MutableMap<String, ContactConfig> {
         val file = contactsConfigFile()
         if (!file.exists()) {
@@ -71,6 +84,14 @@ class FileStorage(private val context: Context) {
         file.parentFile?.mkdirs()
         val content = jsonPretty4.encodeToString(config)
         file.writeText(content, Charsets.UTF_8)
+    }
+
+    fun updateContactRemark(uid: String, remark: String): Boolean {
+        val config = readContactsConfig()
+        val existing = config[uid] ?: return false
+        config[uid] = existing.copy(Remark = remark)
+        writeContactsConfig(config)
+        return true
     }
 
     fun ensureChatFile(uid: String) {
