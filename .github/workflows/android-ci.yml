@@ -1,0 +1,74 @@
+name: Android CI
+
+on:
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Gradle cache
+        uses: gradle/gradle-build-action@v3
+
+      - name: Ensure Gradle wrapper jars
+        shell: bash
+        run: |
+          set -euo pipefail
+          url=$(grep -E '^distributionUrl=' gradle/wrapper/gradle-wrapper.properties | cut -d= -f2-)
+          echo "Gradle distribution: $url"
+          curl -L "$url" -o /tmp/gradle.zip
+          wrapper_jar=$(unzip -Z1 /tmp/gradle.zip | grep -E 'lib/plugins/gradle-wrapper-.*\.jar$' | head -n 1)
+          shared_jar=$(unzip -Z1 /tmp/gradle.zip | grep -E 'lib/gradle-wrapper-shared-.*\.jar$' | head -n 1)
+          cli_jar=$(unzip -Z1 /tmp/gradle.zip | grep -E 'lib/gradle-cli-.*\.jar$' | head -n 1)
+          if [ -z "$wrapper_jar" ]; then
+            echo "Gradle wrapper jar not found in distribution" >&2
+            exit 1
+          fi
+          mkdir -p gradle/wrapper
+          unzip -p /tmp/gradle.zip "$wrapper_jar" > gradle/wrapper/gradle-wrapper.jar
+          if [ -n "$shared_jar" ]; then
+            unzip -p /tmp/gradle.zip "$shared_jar" > gradle/wrapper/gradle-wrapper-shared.jar
+          fi
+          if [ -n "$cli_jar" ]; then
+            unzip -p /tmp/gradle.zip "$cli_jar" > gradle/wrapper/gradle-cli.jar
+          fi
+          ls -l gradle/wrapper
+
+      - name: Ensure Gradle wrapper is executable
+        run: chmod +x ./gradlew
+
+      - name: Gradle version
+        run: ./gradlew --version
+
+      - name: Assemble Debug
+        run: ./gradlew clean assembleDebug
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: EncryptionChat-debug-apk-${{ github.run_number }}
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
+      - name: Upload reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: EncryptionChat-reports-${{ github.run_number }}
+          path: app/build/reports/**
+          if-no-files-found: warn
