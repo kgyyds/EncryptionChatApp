@@ -155,6 +155,36 @@ fun SettingsScreen(
                     onClick = { Toast.makeText(context, "开发中", Toast.LENGTH_SHORT).show() }
                 )
             }
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                SectionTitle("拉取消息模式")
+                PullModeRow(
+                    title = "手动刷新",
+                    selected = pullMode.value == PullMode.MANUAL,
+                    onSelect = {
+                        MessagePullPreferences.setMode(context, PullMode.MANUAL)
+                        messageSyncManager.updateMode(PullMode.MANUAL, null)
+                    }
+                )
+                PullModeRow(
+                    title = "聊天 SSE",
+                    selected = pullMode.value == PullMode.CHAT_SSE,
+                    onSelect = {
+                        MessagePullPreferences.setMode(context, PullMode.CHAT_SSE)
+                        messageSyncManager.updateMode(PullMode.CHAT_SSE, null)
+                    }
+                )
+                PullModeRow(
+                    title = "全局 SSE",
+                    selected = pullMode.value == PullMode.GLOBAL_SSE,
+                    onSelect = {
+                        MessagePullPreferences.setMode(context, PullMode.GLOBAL_SSE)
+                        messageSyncManager.updateMode(PullMode.GLOBAL_SSE, null)
+                    }
+                )
+            }
             Spacer(modifier = Modifier.padding(bottom = 8.dp))
         }
     }
