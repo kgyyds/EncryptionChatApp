@@ -16,7 +16,8 @@ class ChatViewModel(
     data class ChatState(
         val uid: String = "",
         val remark: String = "",
-        val messages: List<UiMessage> = emptyList()
+        val messages: List<UiMessage> = emptyList(),
+        val hasHistory: Boolean = true
     )
 
     data class UiMessage(
@@ -37,7 +38,11 @@ class ChatViewModel(
             val history = repository.readChatHistory(uid)
                 .toList()
                 .sortedBy { it.first.toLongOrNull() ?: 0L }
-            val uiMessages = history.map { (ts, message) ->
+            val filteredHistory = history.filter { (ts, message) ->
+                val epoch = ts.toLongOrNull() ?: 0L
+                epoch > 0L && message.text != "暂无记录"
+            }
+            val uiMessages = filteredHistory.map { (ts, message) ->
                 UiMessage(
                     ts = ts,
                     speaker = message.Spokesman,
@@ -45,7 +50,12 @@ class ChatViewModel(
                     timeLabel = TimeFormatter.formatTimestamp(ts)
                 )
             }
-            _state.value = ChatState(uid = uid, remark = remark, messages = uiMessages)
+            _state.value = ChatState(
+                uid = uid,
+                remark = remark,
+                messages = uiMessages,
+                hasHistory = filteredHistory.isNotEmpty()
+            )
         }
     }
 
