@@ -12,6 +12,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Security
 import androidx.compose.material3.Card
@@ -43,7 +44,8 @@ fun SettingsScreen(
     onOpenThemeSettings: () -> Unit,
     onOpenSecurity: () -> Unit,
     onOpenTimeDisplay: () -> Unit,
-    onOpenApiSettings: () -> Unit
+    onOpenApiSettings: () -> Unit,
+    onOpenNotificationSettings: () -> Unit
 ) {
     val viewModel: SettingsViewModel = viewModel(factory = RepositoryViewModelFactory(repository))
     val state = viewModel.state.collectAsStateWithLifecycle()
@@ -112,6 +114,19 @@ fun SettingsScreen(
                     icon = Icons.Outlined.Palette,
                     background = groupBackground,
                     onClick = onOpenTimeDisplay
+                )
+            }
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = cardColors
+            ) {
+                SectionTitle("通知")
+                EntryRow(
+                    title = "通知设置",
+                    subtitle = "消息提醒与后台接收",
+                    icon = Icons.Outlined.Notifications,
+                    background = groupBackground,
+                    onClick = onOpenNotificationSettings
                 )
             }
             Card(
