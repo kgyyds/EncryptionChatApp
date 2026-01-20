@@ -7,7 +7,9 @@ data class ContactConfig(
     val Remark: String,
     val public: String,
     val pass: String,
-    val chatBackground: String = "default"
+    val chatBackground: String = "default",
+    val showInRecent: Boolean = true,
+    val pinned: Boolean = false
 )
 
 @Serializable

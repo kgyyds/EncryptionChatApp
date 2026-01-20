@@ -3,8 +3,10 @@ package com.kgapp.encryptionchat.data.sync
 import android.content.Context
 import android.util.Log
 import com.kgapp.encryptionchat.data.ChatRepository
-import com.kgapp.encryptionchat.data.api.Api2Client
+import com.kgapp.encryptionchat.data.api.Api4Client
+import com.kgapp.encryptionchat.notifications.MessageSyncService
 import com.kgapp.encryptionchat.util.ApiSettingsPreferences
+import com.kgapp.encryptionchat.util.NotificationPreferences
 import com.kgapp.encryptionchat.util.UnreadCounter
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -20,14 +22,12 @@ import kotlinx.coroutines.sync.withLock
 import okhttp3.Call
 import org.json.JSONObject
 import java.time.Instant
-import com.kgapp.encryptionchat.notifications.MessageSyncService
-import com.kgapp.encryptionchat.util.NotificationPreferences
 import java.net.SocketTimeoutException
 
 class MessageSyncManager(
     private val repository: ChatRepository,
     private val context: Context,
-    private val api: Api2Client
+    private val api: Api4Client
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val mutex = Mutex()
@@ -90,7 +90,7 @@ class MessageSyncManager(
             chatJob = scope.launch {
                 val lastTs = repository.getLastTimestamp(fromUid)
                 val payload = mapOf(
-                    "type" to 2,
+                    "type" to "SseMsg",
                     "from" to fromUid,
                     "last_ts" to lastTs
                 )
@@ -103,26 +103,39 @@ class MessageSyncManager(
                 Log.d(TAG, "Chat SSE start for $fromUid with lastTs=$lastTs")
                 try {
                     call.execute().use { response ->
+                        val contentType = response.header("Content-Type")
+                        Log.d(TAG, "SSE response code=${response.code} contentType=$contentType")
                         if (!response.isSuccessful) {
-                            Log.d(TAG, "SSE response error: ${response.code}")
+                            val body = response.body?.string()?.take(500)
+                            Log.d(TAG, "SSE response error: ${response.code} body=$body")
+                            return@use
+                        }
+                        if (contentType?.contains("text/event-stream", ignoreCase = true) != true) {
+                            val body = response.body?.string()?.take(500)
+                            Log.d(TAG, "SSE content-type mismatch: $contentType body=$body")
                             return@use
                         }
                         val source = response.body?.source() ?: return@use
-                        var pendingData: String? = null
+                        var pendingData: StringBuilder? = null
                         while (!source.exhausted() && chatCall?.isCanceled() != true) {
                             val line = source.readUtf8Line() ?: break
-                            if (line.isBlank()) {
-                                if (!pendingData.isNullOrBlank()) {
-                                    handleChatSseData(fromUid, pendingData)
-                                    pendingData = null
-                                }
-                                continue
-                            }
                             if (line == "hb") {
                                 continue
                             }
-                            if (line.startsWith("data: ")) {
-                                pendingData = line.removePrefix("data: ").trim()
+                            if (line.isBlank()) {
+                                if (pendingData?.isNotEmpty() == true) {
+                                    handleChatSseData(fromUid, pendingData.toString())
+                                }
+                                pendingData = null
+                                continue
+                            }
+                            if (line.startsWith("data:")) {
+                                val chunk = line.removePrefix("data:").trimStart()
+                                val builder = pendingData ?: StringBuilder().also { pendingData = it }
+                                if (builder.isNotEmpty()) {
+                                    builder.append("\n")
+                                }
+                                builder.append(chunk)
                             }
                         }
                     }
@@ -138,7 +151,10 @@ class MessageSyncManager(
     fun ensureBroadcastSseRunning() {
         scope.launch {
             mutex.withLock {
-                if (NotificationPreferences.isBackgroundReceiveEnabled(context) || MessageSyncService.isRunning) {
+                if (NotificationPreferences.isBackgroundReceiveEnabled(context)) {
+                    if (!MessageSyncService.isRunning) {
+                        MessageSyncService.start(context)
+                    }
                     return@withLock
                 }
                 if (broadcastJob?.isActive == true) {
@@ -151,7 +167,10 @@ class MessageSyncManager(
 
     suspend fun startBroadcastSse() {
         mutex.withLock {
-            if (NotificationPreferences.isBackgroundReceiveEnabled(context) || MessageSyncService.isRunning) {
+            if (NotificationPreferences.isBackgroundReceiveEnabled(context)) {
+                if (!MessageSyncService.isRunning) {
+                    MessageSyncService.start(context)
+                }
                 return
             }
             if (broadcastJob?.isActive == true) {
@@ -208,7 +227,7 @@ class MessageSyncManager(
                     mapOf("uid" to uid, "ts" to lastTs)
                 }
                 val payload = mapOf(
-                    "type" to 3,
+                    "type" to "SseAllMsg",
                     "contacts" to contactPayload
                 )
                 val tsSummary = contactPayload.joinToString(limit = 5) { item ->
@@ -219,7 +238,7 @@ class MessageSyncManager(
                 Log.d(
                     TAG,
                     "Broadcast SSE request url=${ApiSettingsPreferences.getBaseUrl(context)} " +
-                        "type=3 contacts=${contactPayload.size} ts=$tsSummary"
+                        "type=SseAllMsg contacts=${contactPayload.size} ts=$tsSummary"
                 )
                 val call = api.openSseStream(payload)
                 if (call == null) {
@@ -245,25 +264,30 @@ class MessageSyncManager(
                             return@use
                         }
                         val source = response.body?.source() ?: return@use
-                        var pendingData: String? = null
+                        var pendingData: StringBuilder? = null
                         while (!source.exhausted() && broadcastCall?.isCanceled() != true) {
                             val line = source.readUtf8Line() ?: break
                             if (line == "hb") {
                                 Log.d(TAG, "SSE line: hb")
                                 continue
                             }
-                            if (line.startsWith("data: ")) {
+                            if (line.startsWith("data:")) {
                                 Log.d(TAG, "SSE line: ${line.take(200)}")
                             }
                             if (line.isBlank()) {
-                                if (!pendingData.isNullOrBlank()) {
-                                    handleBroadcastSseData(pendingData)
-                                    pendingData = null
+                                if (pendingData?.isNotEmpty() == true) {
+                                    handleBroadcastSseData(pendingData.toString())
                                 }
+                                pendingData = null
                                 continue
                             }
-                            if (line.startsWith("data: ")) {
-                                pendingData = line.removePrefix("data: ").trim()
+                            if (line.startsWith("data:")) {
+                                val chunk = line.removePrefix("data:").trimStart()
+                                val builder = pendingData ?: StringBuilder().also { pendingData = it }
+                                if (builder.isNotEmpty()) {
+                                    builder.append("\n")
+                                }
+                                builder.append(chunk)
                             }
                         }
                     }
@@ -278,13 +302,12 @@ class MessageSyncManager(
                 delay(backoffMs)
                 backoffMs = (backoffMs * 2).coerceAtMost(MAX_BACKOFF_MS)
             }
-            startBroadcastSseLocked()
         }
     }
 
     private suspend fun handleChatSseData(fromUid: String, payload: String) {
         val json = JSONObject(payload)
-        val text = json.optString("text", "")
+        val text = json.optString("msg", "")
         val ts = json.optLong("ts", 0L)
         if (text.isBlank() || ts <= 0L) return
         val result = repository.handleIncomingCipherMessage(fromUid, ts, text)
@@ -302,7 +325,7 @@ class MessageSyncManager(
     private suspend fun handleBroadcastSseData(payload: String) {
         val json = JSONObject(payload)
         val fromUid = json.optString("from", "")
-        val text = json.optString("text", "")
+        val text = json.optString("msg", "")
         val ts = json.optLong("ts", 0L)
         Log.d(TAG, "Broadcast SSE parsed from=$fromUid ts=$ts")
         if (fromUid.isBlank() || text.isBlank() || ts <= 0L) return
