@@ -10,7 +10,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelAndJoin
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -18,6 +17,8 @@ import kotlinx.coroutines.sync.withLock
 import okhttp3.Call
 import org.json.JSONObject
 import java.time.Instant
+import com.kgapp.encryptionchat.notifications.MessageSyncService
+import com.kgapp.encryptionchat.util.NotificationPreferences
 
 class MessageSyncManager(
     private val repository: ChatRepository,
@@ -33,15 +34,14 @@ class MessageSyncManager(
     private var broadcastCall: Call? = null
     private var activeChatUid: String? = null
 
-    private val _updates = MutableSharedFlow<String>(extraBufferCapacity = 1)
-    val updates: SharedFlow<String> = _updates
+    val updates: SharedFlow<String> = MessageUpdateBus.updates
 
     suspend fun refreshOnce(fromUid: String): String? {
         val result = repository.readChat(fromUid)
         return when {
             result.handshakeFailed -> {
                 repository.appendMessage(fromUid, Instant.now().epochSecond.toString(), 2, "握手密码错误")
-                _updates.tryEmit(fromUid)
+                MessageUpdateBus.emit(fromUid)
                 "握手密码错误"
             }
             !result.success -> {
@@ -53,7 +53,7 @@ class MessageSyncManager(
             }
             else -> {
                 if (result.addedCount > 0) {
-                    _updates.tryEmit(fromUid)
+                    MessageUpdateBus.emit(fromUid)
                     if (activeChatUid != fromUid) {
                         UnreadCounter.increment(context, fromUid)
                     }
@@ -134,6 +134,9 @@ class MessageSyncManager(
     fun ensureBroadcastSseRunning() {
         scope.launch {
             mutex.withLock {
+                if (NotificationPreferences.isBackgroundReceiveEnabled(context) || MessageSyncService.isRunning) {
+                    return@withLock
+                }
                 if (broadcastJob?.isActive == true) {
                     return@withLock
                 }
@@ -144,6 +147,9 @@ class MessageSyncManager(
 
     suspend fun startBroadcastSse() {
         mutex.withLock {
+            if (NotificationPreferences.isBackgroundReceiveEnabled(context) || MessageSyncService.isRunning) {
+                return
+            }
             if (broadcastJob?.isActive == true) {
                 return
             }
@@ -247,7 +253,7 @@ class MessageSyncManager(
             repository.appendMessage(fromUid, Instant.now().epochSecond.toString(), 2, "握手密码错误")
         }
         if (result.success) {
-            _updates.tryEmit(fromUid)
+            MessageUpdateBus.emit(fromUid)
             if (activeChatUid != fromUid) {
                 UnreadCounter.increment(context, fromUid)
             }
@@ -265,7 +271,7 @@ class MessageSyncManager(
             repository.appendMessage(fromUid, Instant.now().epochSecond.toString(), 2, "握手密码错误")
         }
         if (result.success) {
-            _updates.tryEmit(fromUid)
+            MessageUpdateBus.emit(fromUid)
             if (activeChatUid != fromUid) {
                 UnreadCounter.increment(context, fromUid)
             }
