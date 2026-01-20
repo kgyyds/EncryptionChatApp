@@ -2,6 +2,7 @@
 
 ## Overview
 This is a Kotlin + Jetpack Compose Android implementation that mirrors the Python reference logic (RSA OAEP encryption, RSA-SHA256 signing, and JSON storage layout).
+目前没有问题。
 
 ## Local file layout (context.filesDir)
 ```
