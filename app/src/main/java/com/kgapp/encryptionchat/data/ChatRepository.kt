@@ -96,6 +96,11 @@ class ChatRepository(
         history.keys.mapNotNull { it.toLongOrNull() }.maxOrNull() ?: 0L
     }
 
+    suspend fun getLastTimestamp(uid: String): Long = withContext(Dispatchers.IO) {
+        val history = storage.readChatHistory(uid)
+        history.keys.mapNotNull { it.toLongOrNull() }.maxOrNull() ?: 0L
+    }
+
     suspend fun deleteChatHistory(uid: String) = withContext(Dispatchers.IO) {
         withChatLock(uid) {
             val ts = Instant.now().epochSecond.toString()
