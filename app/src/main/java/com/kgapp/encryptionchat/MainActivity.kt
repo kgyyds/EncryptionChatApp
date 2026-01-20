@@ -36,6 +36,7 @@ class MainActivity : ComponentActivity() {
 )
         val repository = ChatRepository(storage, crypto, api)
         val messageSyncManager = MessageSyncManager(repository, applicationContext, api)
+        messageSyncManager.ensureBroadcastSseRunning()
         setContent {
             val themeMode by ThemePreferences.themeMode.collectAsState()
             val darkTheme = when (themeMode) {
