@@ -1,7 +1,7 @@
 package com.kgapp.encryptionchat.data
 
 import com.kgapp.encryptionchat.data.api.ApiResult
-import com.kgapp.encryptionchat.data.api.Api2Client
+import com.kgapp.encryptionchat.data.api.Api4Client
 import com.kgapp.encryptionchat.data.crypto.CryptoManager
 import com.kgapp.encryptionchat.data.model.ChatMessage
 import com.kgapp.encryptionchat.data.model.ContactConfig
@@ -17,7 +17,7 @@ import java.util.concurrent.ConcurrentHashMap
 class ChatRepository(
     private val storage: FileStorage,
     private val crypto: CryptoManager,
-    private val api: Api2Client
+    private val api: Api4Client
 ) {
     private val chatLocks = ConcurrentHashMap<String, Mutex>()
 
@@ -159,9 +159,9 @@ class ChatRepository(
         if (encrypted.isBlank()) return@withContext SendResult(false, null, "加密失败", null)
 
         val payload = mapOf(
-            "type" to 1,
+            "type" to "SendMsg",
             "recipient" to uid,
-            "text" to encrypted
+            "msg" to encrypted
         )
 
         val respResult = api.postJsonEnvelope(payload)
@@ -188,7 +188,7 @@ class ChatRepository(
             val lastTs = history.keys.mapNotNull { it.toLongOrNull() }.maxOrNull() ?: 0L
 
             val payload = mapOf(
-                "type" to 0,
+                "type" to "GetMsg",
                 "from" to uid,
                 "last_ts" to lastTs
             )
@@ -209,7 +209,7 @@ class ChatRepository(
                 while (keys.hasNext()) {
                     val msgTs = keys.next()
                     val item = data.optJSONObject(msgTs) ?: continue
-                    val cipherText = item.optString("text", "")
+                    val cipherText = item.optString("msg", "")
 
                     val plain = crypto.decryptText(cipherText)
                     val match = Regex("\\[pass=(.*?)\\]").find(plain)
