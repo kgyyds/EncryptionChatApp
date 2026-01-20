@@ -1,7 +1,7 @@
 package com.kgapp.encryptionchat.data
 
 import com.kgapp.encryptionchat.data.api.ApiResult
-import com.kgapp.encryptionchat.data.api.Api2Client
+import com.kgapp.encryptionchat.data.api.Api4Client
 import com.kgapp.encryptionchat.data.crypto.CryptoManager
 import com.kgapp.encryptionchat.data.model.ChatMessage
 import com.kgapp.encryptionchat.data.model.ContactConfig
@@ -17,7 +17,7 @@ import java.util.concurrent.ConcurrentHashMap
 class ChatRepository(
     private val storage: FileStorage,
     private val crypto: CryptoManager,
-    private val api: Api2Client
+    private val api: Api4Client
 ) {
     private val chatLocks = ConcurrentHashMap<String, Mutex>()
 
@@ -57,6 +57,25 @@ class ChatRepository(
 
     suspend fun updateContactRemark(uid: String, remark: String): Boolean =
         withContext(Dispatchers.IO) { storage.updateContactRemark(uid, remark) }
+
+    suspend fun updateContactShowInRecent(uid: String, show: Boolean): Boolean =
+        withContext(Dispatchers.IO) {
+            val config = storage.readContactsConfig()
+            val existing = config[uid] ?: return@withContext false
+            if (existing.showInRecent == show) return@withContext true
+            config[uid] = existing.copy(showInRecent = show)
+            storage.writeContactsConfig(config)
+            true
+        }
+
+    suspend fun togglePinned(uid: String): Boolean =
+        withContext(Dispatchers.IO) {
+            val config = storage.readContactsConfig()
+            val existing = config[uid] ?: return@withContext false
+            config[uid] = existing.copy(pinned = !existing.pinned)
+            storage.writeContactsConfig(config)
+            true
+        }
 
     suspend fun readContactsRaw(): String = withContext(Dispatchers.IO) { storage.readContactsConfigRaw() }
 
@@ -99,7 +118,8 @@ class ChatRepository(
         val uid: String,
         val remark: String,
         val lastText: String,
-        val lastTs: String
+        val lastTs: String,
+        val pinned: Boolean
     )
 
     suspend fun getRecentChats(): List<RecentChat> = withContext(Dispatchers.IO) {
@@ -113,16 +133,22 @@ class ChatRepository(
             val lastEpoch = lastEntry.key.toLongOrNull() ?: 0L
             if (lastEpoch <= 0L) return@mapNotNull null
 
-            val remark = contacts[uid]?.Remark ?: uid
+            val contact = contacts[uid] ?: return@mapNotNull null
+            if (!contact.showInRecent) return@mapNotNull null
+            val remark = contact.Remark.ifBlank { uid }
             RecentChat(
                 uid = uid,
                 remark = remark,
                 lastText = lastEntry.value.text,
-                lastTs = lastEntry.key
+                lastTs = lastEntry.key,
+                pinned = contact.pinned
             )
         }
 
-        recents.sortedByDescending { it.lastTs.toLongOrNull() ?: 0L }
+        recents.sortedWith(
+            compareByDescending<RecentChat> { it.pinned }
+                .thenByDescending { it.lastTs.toLongOrNull() ?: 0L }
+        )
     }
 
     suspend fun appendMessage(uid: String, ts: String, speaker: Int, text: String) =
@@ -152,6 +178,10 @@ class ChatRepository(
     suspend fun sendChat(uid: String, text: String): SendResult = withContext(Dispatchers.IO) {
         val config = storage.readContactsConfig()
         val contact = config[uid] ?: return@withContext SendResult(false, null, "联系人不存在", null)
+        if (!contact.showInRecent) {
+            config[uid] = contact.copy(showInRecent = true)
+            storage.writeContactsConfig(config)
+        }
 
         val password = contact.pass
         val textTo = "[pass=$password]$text"
@@ -159,9 +189,9 @@ class ChatRepository(
         if (encrypted.isBlank()) return@withContext SendResult(false, null, "加密失败", null)
 
         val payload = mapOf(
-            "type" to 1,
+            "type" to "SendMsg",
             "recipient" to uid,
-            "text" to encrypted
+            "msg" to encrypted
         )
 
         val respResult = api.postJsonEnvelope(payload)
@@ -188,7 +218,7 @@ class ChatRepository(
             val lastTs = history.keys.mapNotNull { it.toLongOrNull() }.maxOrNull() ?: 0L
 
             val payload = mapOf(
-                "type" to 0,
+                "type" to "GetMsg",
                 "from" to uid,
                 "last_ts" to lastTs
             )
@@ -209,7 +239,7 @@ class ChatRepository(
                 while (keys.hasNext()) {
                     val msgTs = keys.next()
                     val item = data.optJSONObject(msgTs) ?: continue
-                    val cipherText = item.optString("text", "")
+                    val cipherText = item.optString("msg", "")
 
                     val plain = crypto.decryptText(cipherText)
                     val match = Regex("\\[pass=(.*?)\\]").find(plain)
@@ -264,6 +294,10 @@ class ChatRepository(
                 if (ts <= 0L || cleanText.isBlank()) return@withChatLock IncomingResult(false, "消息格式异常", false)
 
                 storage.upsertChatMessage(uid, ts.toString(), ChatMessage(Spokesman = 1, text = cleanText))
+                if (!contact.showInRecent) {
+                    config[uid] = contact.copy(showInRecent = true)
+                    storage.writeContactsConfig(config)
+                }
                 IncomingResult(true, null, false)
             }
         }
