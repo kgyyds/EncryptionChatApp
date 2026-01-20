@@ -178,6 +178,10 @@ class ChatRepository(
     suspend fun sendChat(uid: String, text: String): SendResult = withContext(Dispatchers.IO) {
         val config = storage.readContactsConfig()
         val contact = config[uid] ?: return@withContext SendResult(false, null, "联系人不存在", null)
+        if (!contact.showInRecent) {
+            config[uid] = contact.copy(showInRecent = true)
+            storage.writeContactsConfig(config)
+        }
 
         val password = contact.pass
         val textTo = "[pass=$password]$text"

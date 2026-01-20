@@ -54,7 +54,8 @@ import com.kgapp.encryptionchat.ui.viewmodel.RepositoryViewModelFactory
 import com.kgapp.encryptionchat.util.UnreadCounter
 import kotlin.math.roundToInt
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -110,8 +111,13 @@ fun RecentScreen(
                         openItemUid.value = null
                     },
                     onMarkUnread = {
-                        UnreadCounter.markUnread(context, item.uid)
-                        Toast.makeText(context, "已标为未读", Toast.LENGTH_SHORT).show()
+                        if (unread > 0) {
+                            UnreadCounter.clear(context, item.uid)
+                            Toast.makeText(context, "已标为已读", Toast.LENGTH_SHORT).show()
+                        } else {
+                            UnreadCounter.markUnread(context, item.uid)
+                            Toast.makeText(context, "已标为未读", Toast.LENGTH_SHORT).show()
+                        }
                         openItemUid.value = null
                     },
                     onHide = {
@@ -143,16 +149,27 @@ private fun SwipeableRecentItem(
     val actionWidth = 86.dp
     val totalActionsWidth = actionWidth * 3
     val maxOffset = with(density) { -totalActionsWidth.toPx() }
-    val threshold = maxOffset * 0.5f
+    val menuWidthPx = -maxOffset
+    val openThreshold = menuWidthPx * 0.15f
+    val velocityThreshold = with(density) { 900.dp.toPx() }
     val offsetX = remember { Animatable(0f) }
 
     LaunchedEffect(isOpen, maxOffset) {
         val target = if (isOpen) maxOffset else 0f
-        offsetX.animateTo(target, tween(durationMillis = 200))
+        offsetX.animateTo(
+            target,
+            spring(dampingRatio = 0.9f, stiffness = 450f)
+        )
     }
 
     val draggableState = rememberDraggableState { delta ->
-        val next = (offsetX.value + delta).coerceIn(maxOffset, 0f)
+        val rawNext = offsetX.value + delta
+        val adjustedDelta = if (rawNext > 0f || rawNext < maxOffset) {
+            delta * 0.3f
+        } else {
+            delta
+        }
+        val next = (offsetX.value + adjustedDelta).coerceIn(maxOffset, 0f)
         scope.launch {
             offsetX.snapTo(next)
         }
@@ -176,7 +193,7 @@ private fun SwipeableRecentItem(
                 onClick = onTogglePinned
             )
             SwipeActionButton(
-                text = "标为未读",
+                text = if (unread > 0) "标为已读" else "标为未读",
                 color = Color(0xFFFBC02D),
                 modifier = Modifier.width(actionWidth),
                 onClick = onMarkUnread
@@ -197,18 +214,32 @@ private fun SwipeableRecentItem(
                 .draggable(
                     orientation = Orientation.Horizontal,
                     state = draggableState,
-                    onDragStopped = {
-                        val shouldOpen = offsetX.value <= threshold
+                    onDragStopped = { velocity ->
+                        val shouldOpen = when {
+                            velocity < -velocityThreshold -> true
+                            velocity > velocityThreshold -> false
+                            else -> kotlin.math.abs(offsetX.value) > openThreshold
+                        }
                         val target = if (shouldOpen) maxOffset else 0f
                         scope.launch {
-                            offsetX.animateTo(target, tween(durationMillis = 200))
+                            offsetX.animateTo(
+                                target,
+                                spring(dampingRatio = 0.9f, stiffness = 450f)
+                            )
                         }
                         onOpenChange(if (shouldOpen) item.uid else null)
                     }
                 )
                 .clickable {
                     if (isOpen) {
-                        onOpenChange(null)
+                        scope.launch {
+                            offsetX.animateTo(
+                                0f,
+                                spring(dampingRatio = 0.9f, stiffness = 450f)
+                            )
+                            onOpenChange(null)
+                            onOpenChat()
+                        }
                     } else {
                         onOpenChat()
                     }
