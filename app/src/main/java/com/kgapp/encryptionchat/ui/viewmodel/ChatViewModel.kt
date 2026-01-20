@@ -30,34 +30,37 @@ class ChatViewModel(
     val state: StateFlow<ChatState> = _state.asStateFlow()
 
     fun load(uid: String) {
-        _state.value = _state.value.copy(uid = uid)
-        viewModelScope.launch {
-            val contacts = repository.readContacts()
-            val contact = contacts[uid]
-            val remark = contact?.Remark ?: uid
-            val history = repository.readChatHistory(uid)
-                .toList()
-                .sortedBy { it.first.toLongOrNull() ?: 0L }
-            val filteredHistory = history.filter { (ts, message) ->
-                val epoch = ts.toLongOrNull() ?: 0L
-                epoch > 0L && message.text != "暂无记录"
-            }
-            val uiMessages = filteredHistory.map { (ts, message) ->
-                UiMessage(
-                    ts = ts,
-                    speaker = message.Spokesman,
-                    text = message.text
-                )
-            }
-            _state.value = ChatState(
-                uid = uid,
-                remark = remark,
-                selfName = selfName,
-                messages = uiMessages,
-                hasHistory = filteredHistory.isNotEmpty()
+    _state.value = _state.value.copy(uid = uid)
+    viewModelScope.launch {
+        val contacts = repository.readContacts()
+        val contact = contacts[uid]
+        val remark = contact?.Remark ?: uid
+
+        val history = repository.readChatHistory(uid)
+        val selfName = repository.getSelfName().orEmpty().ifBlank { "我" }
+
+        val filteredHistory = history.filter { (ts, message) ->
+            val epoch = ts.toLongOrNull() ?: 0L
+            epoch > 0L && message.text != "暂无记录"
+        }
+
+        val uiMessages = filteredHistory.map { (ts, message) ->
+            UiMessage(
+                ts = ts,
+                speaker = message.Spokesman,
+                text = message.text
             )
         }
+
+        _state.value = ChatState(
+            uid = uid,
+            remark = remark,
+            selfName = selfName,
+            messages = uiMessages,
+            hasHistory = filteredHistory.isNotEmpty()
+        )
     }
+}
 
     fun refresh() {
         val uid = _state.value.uid
@@ -114,5 +117,11 @@ class ChatViewModel(
             }
         }
     }
+    suspend fun deleteMessage(ts: String) {
+    val uid = _state.value.uid
+    if (uid.isBlank() || ts.isBlank()) return
+    repository.deleteMessage(uid, ts)
+    refresh()
+}
 
 }

@@ -68,6 +68,12 @@ fun ChatScreen(
 ) {
     val viewModel: ChatViewModel = viewModel(factory = RepositoryViewModelFactory(repository))
     val state = viewModel.state.collectAsStateWithLifecycle()
+    val selfAvatar = remember(state.value.selfName) {
+    state.value.selfName.trim().ifBlank { "我" }
+}
+val otherAvatar = remember(state.value.remark) {
+    state.value.remark.trim().ifBlank { "对" }
+}
     val timeMode = TimeDisplayPreferences.mode.collectAsStateWithLifecycle()
     val inputState = remember { mutableStateOf("") }
     val listState = rememberLazyListState()

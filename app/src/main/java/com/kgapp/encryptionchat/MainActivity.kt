@@ -30,7 +30,10 @@ class MainActivity : ComponentActivity() {
         UnreadCounter.initialize(this)
         val storage = FileStorage(this)
         val crypto = CryptoManager(storage)
-        val api = Api2Client(crypto) { ApiSettingsPreferences.getBaseUrl(this) }
+        val api = Api2Client(
+    crypto = crypto,
+    baseUrlProvider = { ApiSettingsPreferences.getBaseUrl(this) }
+)
         val repository = ChatRepository(storage, crypto, api)
         val messageSyncManager = MessageSyncManager(repository, applicationContext, api)
         setContent {
