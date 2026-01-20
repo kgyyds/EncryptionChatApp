@@ -59,14 +59,6 @@ class ChatRepository(
     suspend fun updateContactRemark(uid: String, remark: String): Boolean =
         withContext(Dispatchers.IO) { storage.updateContactRemark(uid, remark) }
 
-    suspend fun updateContactBackground(uid: String, background: String): Boolean = withContext(Dispatchers.IO) {
-        val config = storage.readContactsConfig()
-        val existing = config[uid] ?: return@withContext false
-        config[uid] = existing.copy(chatBackground = background)
-        storage.writeContactsConfig(config)
-        true
-    }
-
     suspend fun readContactsRaw(): String = withContext(Dispatchers.IO) { storage.readContactsConfigRaw() }
 
     suspend fun addContact(remark: String, pubKey: String, password: String): String = withContext(Dispatchers.IO) {
@@ -90,11 +82,6 @@ class ChatRepository(
 
     suspend fun readChatHistory(uid: String): Map<String, ChatMessage> =
         withContext(Dispatchers.IO) { storage.readChatHistory(uid) }
-
-    suspend fun getLastTimestamp(uid: String): Long = withContext(Dispatchers.IO) {
-        val history = storage.readChatHistory(uid)
-        history.keys.mapNotNull { it.toLongOrNull() }.maxOrNull() ?: 0L
-    }
 
     suspend fun getLastTimestamp(uid: String): Long = withContext(Dispatchers.IO) {
         val history = storage.readChatHistory(uid)

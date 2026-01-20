@@ -1,11 +1,12 @@
 package com.kgapp.encryptionchat.ui.screens
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Row
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.Card
@@ -26,21 +27,25 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import com.kgapp.encryptionchat.util.ThemeMode
-import com.kgapp.encryptionchat.util.ThemePreferences
+import com.kgapp.encryptionchat.data.sync.MessageSyncManager
+import com.kgapp.encryptionchat.util.MessagePullPreferences
+import com.kgapp.encryptionchat.util.PullMode
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ThemeSettingsScreen(onBack: () -> Unit) {
+fun MessagePullSettingsScreen(
+    messageSyncManager: MessageSyncManager,
+    onBack: () -> Unit
+) {
     val context = LocalContext.current
-    val themeMode by ThemePreferences.themeMode.collectAsState()
-
+    val mode by MessagePullPreferences.mode.collectAsState()
     val colors = MaterialTheme.colorScheme
+
     Scaffold(
         containerColor = colors.background,
         topBar = {
             TopAppBar(
-                title = { Text("主题设置") },
+                title = { Text("消息拉取设置") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Back")
@@ -66,20 +71,29 @@ fun ThemeSettingsScreen(onBack: () -> Unit) {
                         .background(colors.surfaceVariant)
                         .padding(vertical = 4.dp)
                 ) {
-                    ThemeOption(
-                        title = "跟随系统",
-                        selected = themeMode == ThemeMode.SYSTEM,
-                        onSelect = { ThemePreferences.setThemeMode(context, ThemeMode.SYSTEM) }
+                    PullModeOption(
+                        title = "聊天 SSE",
+                        selected = mode == PullMode.CHAT_SSE,
+                        onSelect = {
+                            MessagePullPreferences.setMode(context, PullMode.CHAT_SSE)
+                            messageSyncManager.updateMode(PullMode.CHAT_SSE, null)
+                        }
                     )
-                    ThemeOption(
-                        title = "暗色",
-                        selected = themeMode == ThemeMode.DARK,
-                        onSelect = { ThemePreferences.setThemeMode(context, ThemeMode.DARK) }
+                    PullModeOption(
+                        title = "全局 SSE",
+                        selected = mode == PullMode.GLOBAL_SSE,
+                        onSelect = {
+                            MessagePullPreferences.setMode(context, PullMode.GLOBAL_SSE)
+                            messageSyncManager.updateMode(PullMode.GLOBAL_SSE, null)
+                        }
                     )
-                    ThemeOption(
-                        title = "亮色",
-                        selected = themeMode == ThemeMode.LIGHT,
-                        onSelect = { ThemePreferences.setThemeMode(context, ThemeMode.LIGHT) }
+                    PullModeOption(
+                        title = "手动刷新",
+                        selected = mode == PullMode.MANUAL,
+                        onSelect = {
+                            MessagePullPreferences.setMode(context, PullMode.MANUAL)
+                            messageSyncManager.updateMode(PullMode.MANUAL, null)
+                        }
                     )
                 }
             }
@@ -88,12 +102,12 @@ fun ThemeSettingsScreen(onBack: () -> Unit) {
 }
 
 @Composable
-private fun ThemeOption(
+private fun PullModeOption(
     title: String,
     selected: Boolean,
     onSelect: () -> Unit
 ) {
-    androidx.compose.foundation.layout.Row(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onSelect() }
@@ -103,7 +117,8 @@ private fun ThemeOption(
         Text(
             text = title,
             modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.bodyLarge
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurface
         )
         RadioButton(selected = selected, onClick = onSelect)
     }

@@ -50,7 +50,6 @@ import com.kgapp.encryptionchat.util.PullMode
 import com.kgapp.encryptionchat.util.TimeDisplayPreferences
 import com.kgapp.encryptionchat.util.TimeFormatter
 import com.kgapp.encryptionchat.util.UnreadCounter
-import com.kgapp.encryptionchat.util.ChatBackgrounds
 import kotlinx.coroutines.launch
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.foundation.layout.imePadding
@@ -124,10 +123,6 @@ fun ChatScreen(
         }
     }
 
-    val backgroundBrush = remember(state.value.backgroundId) {
-        ChatBackgrounds.brushFor(state.value.backgroundId)
-    }
-
     Scaffold(
         containerColor = colors.background,
         topBar = {
@@ -179,7 +174,7 @@ fun ChatScreen(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .background(backgroundBrush),
+                    .background(colors.background),
                 state = listState,
                 contentPadding = PaddingValues(12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)

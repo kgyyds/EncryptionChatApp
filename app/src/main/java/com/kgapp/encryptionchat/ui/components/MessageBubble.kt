@@ -21,11 +21,6 @@ fun MessageBubble(text: String, speaker: Int, timestamp: String?) {
     val isMine = speaker == 0
     val isSystem = speaker == 2
     val colors = MaterialTheme.colorScheme
-    val alignment = when {
-        isSystem -> Arrangement.Center
-        isMine -> Arrangement.End
-        else -> Arrangement.Start
-    }
     val backgroundColor = when {
         isSystem -> colors.surfaceVariant
         isMine -> colors.primaryContainer
@@ -47,7 +42,11 @@ fun MessageBubble(text: String, speaker: Int, timestamp: String?) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 6.dp),
-        horizontalArrangement = alignment,
+        horizontalArrangement = when {
+            isSystem -> Arrangement.Center
+            isMine -> Arrangement.End
+            else -> Arrangement.Start
+        },
         verticalAlignment = Alignment.CenterVertically
     ) {
         Surface(

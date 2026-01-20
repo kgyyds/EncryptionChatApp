@@ -34,7 +34,6 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.RadioButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -54,7 +53,6 @@ import com.kgapp.encryptionchat.ui.viewmodel.RepositoryViewModelFactory
 import android.widget.Toast
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.clip
-import com.kgapp.encryptionchat.util.ChatBackgrounds
 import com.kgapp.encryptionchat.util.UnreadCounter
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -72,10 +70,8 @@ fun ContactsScreen(
     val context = LocalContext.current
     val editTarget = remember { mutableStateOf<Pair<String, String>?>(null) }
     val editRemark = remember { mutableStateOf("") }
-    val editBackground = remember { mutableStateOf("default") }
     val menuTarget = remember { mutableStateOf<String?>(null) }
     val deleteTarget = remember { mutableStateOf<String?>(null) }
-    val backgroundOptions = remember { ChatBackgrounds.options() }
 
     LaunchedEffect(Unit) {
         viewModel.refresh()
@@ -198,7 +194,6 @@ fun ContactsScreen(
                             onClick = {
                                 editTarget.value = uid to displayName
                                 editRemark.value = displayName
-                                editBackground.value = contact.chatBackground
                                 menuTarget.value = null
                             }
                         )
@@ -228,24 +223,6 @@ fun ContactsScreen(
                         onValueChange = { editRemark.value = it },
                         label = { Text("备注") }
                     )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(text = "聊天背景")
-                    Column {
-                        backgroundOptions.forEach { option ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                RadioButton(
-                                    selected = editBackground.value == option.id,
-                                    onClick = { editBackground.value = option.id }
-                                )
-                                Text(text = option.label, modifier = Modifier.padding(start = 8.dp))
-                            }
-                        }
-                    }
                 }
             },
             confirmButton = {
@@ -256,7 +233,6 @@ fun ContactsScreen(
                         val remark = editRemark.value.trim()
                         viewModel.updateRemark(uid, remark) { success ->
                             if (success) {
-                                viewModel.updateBackground(uid, editBackground.value) { _ -> }
                                 Toast.makeText(context, "备注已更新", Toast.LENGTH_SHORT).show()
                             } else {
                                 Toast.makeText(context, "更新失败", Toast.LENGTH_SHORT).show()

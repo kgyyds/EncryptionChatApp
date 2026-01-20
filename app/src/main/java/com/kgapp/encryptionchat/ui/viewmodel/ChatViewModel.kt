@@ -16,8 +16,7 @@ class ChatViewModel(
         val uid: String = "",
         val remark: String = "",
         val messages: List<UiMessage> = emptyList(),
-        val hasHistory: Boolean = true,
-        val backgroundId: String = "default"
+        val hasHistory: Boolean = true
     )
 
     data class UiMessage(
@@ -35,7 +34,6 @@ class ChatViewModel(
             val contacts = repository.readContacts()
             val contact = contacts[uid]
             val remark = contact?.Remark ?: uid
-            val backgroundId = contact?.chatBackground ?: "default"
             val history = repository.readChatHistory(uid)
                 .toList()
                 .sortedBy { it.first.toLongOrNull() ?: 0L }
@@ -54,8 +52,7 @@ class ChatViewModel(
                 uid = uid,
                 remark = remark,
                 messages = uiMessages,
-                hasHistory = filteredHistory.isNotEmpty(),
-                backgroundId = backgroundId
+                hasHistory = filteredHistory.isNotEmpty()
             )
         }
     }
@@ -115,4 +112,5 @@ class ChatViewModel(
             }
         }
     }
+
 }
