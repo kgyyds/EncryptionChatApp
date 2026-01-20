@@ -115,7 +115,6 @@ fun ChatScreen(
         onDispose {
             scope.launch {
                 messageSyncManager.stopChatSse()
-                messageSyncManager.startBroadcastSse()
             }
         }
     }
