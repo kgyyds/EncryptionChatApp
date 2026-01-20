@@ -44,13 +44,16 @@ class ChatViewModel(
             epoch > 0L && message.text != "暂无记录"
         }
 
-        val uiMessages = filteredHistory.map { (ts, message) ->
-            UiMessage(
-                ts = ts,
-                speaker = message.Spokesman,
-                text = message.text
-            )
-        }
+    
+        val uiMessages = filteredHistory
+    .map { (ts, message) ->
+        UiMessage(
+            ts = ts,
+            speaker = message.Spokesman,
+            text = message.text
+        )
+    }
+    .sortedByDescending { it.ts.toLongOrNull() ?: 0L } 
 
         _state.value = ChatState(
             uid = uid,
