@@ -4,7 +4,9 @@ import android.content.Context
 import android.util.Log
 import com.kgapp.encryptionchat.data.ChatRepository
 import com.kgapp.encryptionchat.data.api.Api4Client
+import com.kgapp.encryptionchat.notifications.MessageSyncService
 import com.kgapp.encryptionchat.util.ApiSettingsPreferences
+import com.kgapp.encryptionchat.util.NotificationPreferences
 import com.kgapp.encryptionchat.util.UnreadCounter
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -149,6 +151,12 @@ class MessageSyncManager(
     fun ensureBroadcastSseRunning() {
         scope.launch {
             mutex.withLock {
+                if (NotificationPreferences.isBackgroundReceiveEnabled(context)) {
+                    if (!MessageSyncService.isRunning) {
+                        MessageSyncService.start(context)
+                    }
+                    return@withLock
+                }
                 if (broadcastJob?.isActive == true) {
                     return@withLock
                 }
@@ -159,6 +167,12 @@ class MessageSyncManager(
 
     suspend fun startBroadcastSse() {
         mutex.withLock {
+            if (NotificationPreferences.isBackgroundReceiveEnabled(context)) {
+                if (!MessageSyncService.isRunning) {
+                    MessageSyncService.start(context)
+                }
+                return
+            }
             if (broadcastJob?.isActive == true) {
                 return
             }
