@@ -64,7 +64,14 @@ class RecentViewModel(
 
     fun deleteChat(uid: String) {
         viewModelScope.launch {
-            repository.deleteChatHistory(uid)
+            repository.updateContactShowInRecent(uid, false)
+            refresh()
+        }
+    }
+
+    fun togglePinned(uid: String) {
+        viewModelScope.launch {
+            repository.togglePinned(uid)
             refresh()
         }
     }
