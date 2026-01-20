@@ -8,7 +8,7 @@ import kotlinx.coroutines.flow.asStateFlow
 object ApiSettingsPreferences {
     private const val PREFS_NAME = "api_settings_prefs"
     private const val KEY_BASE_URL = "api_base_url"
-    const val DEFAULT_BASE_URL = "http://47.113.126.123:8890/api/api2.php"
+    const val DEFAULT_BASE_URL = "http://47.113.126.123:8890/api/api4.php"
 
     private val _baseUrl = MutableStateFlow(DEFAULT_BASE_URL)
     val baseUrl: StateFlow<String> = _baseUrl.asStateFlow()
