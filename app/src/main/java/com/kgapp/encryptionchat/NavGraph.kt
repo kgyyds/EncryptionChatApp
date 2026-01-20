@@ -11,7 +11,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.layout.padding
 import androidx.navigation.NavType
@@ -246,10 +245,6 @@ private fun TabScaffold(
 ) {
     var selectedTab by rememberSaveable { mutableStateOf(Screen.Recent.route) }
     val tabs = listOf(Screen.Recent, Screen.Contacts, Screen.Settings)
-
-    LaunchedEffect(selectedTab) {
-        messageSyncManager.startBroadcastSse()
-    }
 
     Scaffold(
         bottomBar = {

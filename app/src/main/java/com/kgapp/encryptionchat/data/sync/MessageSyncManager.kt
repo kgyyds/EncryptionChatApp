@@ -26,11 +26,12 @@ class MessageSyncManager(
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val mutex = Mutex()
-    private var currentFromUid: String? = null
-    private var currentJob: Job? = null
-    private var currentCall: Call? = null
+    private var chatFromUid: String? = null
+    private var chatJob: Job? = null
+    private var chatCall: Call? = null
+    private var broadcastJob: Job? = null
+    private var broadcastCall: Call? = null
     private var activeChatUid: String? = null
-    private var currentChannel: Channel = Channel.NONE
 
     private val _updates = MutableSharedFlow<String>(extraBufferCapacity = 1)
     val updates: SharedFlow<String> = _updates
@@ -76,14 +77,13 @@ class MessageSyncManager(
 
     suspend fun startChatSse(fromUid: String) {
         mutex.withLock {
-            if (currentChannel == Channel.CHAT && currentFromUid == fromUid && currentJob?.isActive == true) {
+            if (chatFromUid == fromUid && chatJob?.isActive == true) {
                 return
             }
-            stopSseLocked()
-            currentFromUid = fromUid
+            stopChatSseLocked()
+            chatFromUid = fromUid
             activeChatUid = fromUid
-            currentChannel = Channel.CHAT
-            currentJob = scope.launch {
+            chatJob = scope.launch {
                 val lastTs = repository.getLastTimestamp(fromUid)
                 val payload = mapOf(
                     "type" to 2,
@@ -95,7 +95,7 @@ class MessageSyncManager(
                         Log.d(TAG, "SSE skipped: missing credentials")
                         return@launch
                     }
-                currentCall = call
+                chatCall = call
                 Log.d(TAG, "Chat SSE start for $fromUid with lastTs=$lastTs")
                 try {
                     call.execute().use { response ->
@@ -105,7 +105,7 @@ class MessageSyncManager(
                         }
                         val source = response.body?.source() ?: return@use
                         var pendingData: String? = null
-                        while (!source.exhausted() && currentCall?.isCanceled() != true) {
+                        while (!source.exhausted() && chatCall?.isCanceled() != true) {
                             val line = source.readUtf8Line() ?: break
                             if (line.isBlank()) {
                                 if (!pendingData.isNullOrBlank()) {
@@ -123,101 +123,118 @@ class MessageSyncManager(
                         }
                     }
                 } catch (ex: Exception) {
-                    if (currentCall?.isCanceled() != true) {
+                    if (chatCall?.isCanceled() != true) {
                         Log.d(TAG, "SSE error: ${ex.message}")
                     }
                 }
+            }
+        }
+    }
+
+    fun ensureBroadcastSseRunning() {
+        scope.launch {
+            mutex.withLock {
+                if (broadcastJob?.isActive == true) {
+                    return@withLock
+                }
+                startBroadcastSseLocked()
             }
         }
     }
 
     suspend fun startBroadcastSse() {
         mutex.withLock {
-            if (currentChannel == Channel.BROADCAST && currentJob?.isActive == true) {
+            if (broadcastJob?.isActive == true) {
                 return
             }
-            stopSseLocked()
-            activeChatUid = null
-            currentChannel = Channel.BROADCAST
-            currentJob = scope.launch {
-                val contacts = repository.readContacts()
-                if (contacts.isEmpty()) {
-                    Log.d(TAG, "Broadcast SSE skipped: no contacts")
-                    return@launch
-                }
-                val contactPayload = contacts.keys.map { uid ->
-                    val lastTs = repository.getLastTimestamp(uid)
-                    mapOf("uid" to uid, "ts" to lastTs)
-                }
-                val payload = mapOf(
-                    "type" to 3,
-                    "contacts" to contactPayload
-                )
-                val call = api.openSseStream(payload)
-                    ?: run {
-                        Log.d(TAG, "Broadcast SSE skipped: missing credentials")
-                        return@launch
-                    }
-                currentCall = call
-                Log.d(TAG, "Broadcast SSE start with ${contactPayload.size} contacts")
-                try {
-                    call.execute().use { response ->
-                        if (!response.isSuccessful) {
-                            Log.d(TAG, "SSE response error: ${response.code}")
-                            return@use
-                        }
-                        val source = response.body?.source() ?: return@use
-                        var pendingData: String? = null
-                        while (!source.exhausted() && currentCall?.isCanceled() != true) {
-                            val line = source.readUtf8Line() ?: break
-                            if (line.isBlank()) {
-                                if (!pendingData.isNullOrBlank()) {
-                                    handleBroadcastSseData(pendingData)
-                                    pendingData = null
-                                }
-                                continue
-                            }
-                            if (line == "hb") {
-                                continue
-                            }
-                            if (line.startsWith("data: ")) {
-                                pendingData = line.removePrefix("data: ").trim()
-                            }
-                        }
-                    }
-                } catch (ex: Exception) {
-                    if (currentCall?.isCanceled() != true) {
-                        Log.d(TAG, "SSE error: ${ex.message}")
-                    }
-                }
-            }
+            startBroadcastSseLocked()
         }
     }
 
     suspend fun stopChatSse() {
         mutex.withLock {
-            if (currentChannel == Channel.CHAT) {
-                stopSseLocked()
-            }
+            stopChatSseLocked()
         }
     }
 
     suspend fun stopBroadcastSse() {
         mutex.withLock {
-            if (currentChannel == Channel.BROADCAST) {
-                stopSseLocked()
-            }
+            stopBroadcastSseLocked()
         }
     }
 
-    private suspend fun stopSseLocked() {
-        currentCall?.cancel()
-        currentCall = null
-        currentFromUid = null
-        currentJob?.cancelAndJoin()
-        currentJob = null
-        currentChannel = Channel.NONE
-        Log.d(TAG, "SSE stopped")
+    private suspend fun stopChatSseLocked() {
+        chatCall?.cancel()
+        chatCall = null
+        chatFromUid = null
+        activeChatUid = null
+        chatJob?.cancelAndJoin()
+        chatJob = null
+        Log.d(TAG, "Chat SSE stopped")
+    }
+
+    private suspend fun stopBroadcastSseLocked() {
+        broadcastCall?.cancel()
+        broadcastCall = null
+        broadcastJob?.cancelAndJoin()
+        broadcastJob = null
+        Log.d(TAG, "Broadcast SSE stopped")
+    }
+
+    private suspend fun startBroadcastSseLocked() {
+        activeChatUid = null
+        broadcastJob = scope.launch {
+            val contacts = repository.readContacts()
+            if (contacts.isEmpty()) {
+                Log.d(TAG, "Broadcast SSE skipped: no contacts")
+                return@launch
+            }
+            val contactPayload = contacts.keys.map { uid ->
+                val lastTs = repository.getLastTimestamp(uid)
+                mapOf("uid" to uid, "ts" to lastTs)
+            }
+            val payload = mapOf(
+                "type" to 3,
+                "contacts" to contactPayload
+            )
+            val call = api.openSseStream(payload)
+                ?: run {
+                    Log.d(TAG, "Broadcast SSE skipped: missing credentials")
+                    return@launch
+                }
+            broadcastCall = call
+            Log.d(TAG, "Broadcast SSE start with ${contactPayload.size} contacts")
+            try {
+                call.execute().use { response ->
+                    if (!response.isSuccessful) {
+                        Log.d(TAG, "SSE response error: ${response.code}")
+                        return@use
+                    }
+                    val source = response.body?.source() ?: return@use
+                    var pendingData: String? = null
+                    while (!source.exhausted() && broadcastCall?.isCanceled() != true) {
+                        val line = source.readUtf8Line() ?: break
+                        if (line.isBlank()) {
+                            if (!pendingData.isNullOrBlank()) {
+                                handleBroadcastSseData(pendingData)
+                                pendingData = null
+                            }
+                            continue
+                        }
+                        if (line == "hb") {
+                            continue
+                        }
+                        if (line.startsWith("data: ")) {
+                            pendingData = line.removePrefix("data: ").trim()
+                        }
+                    }
+                }
+            } catch (ex: Exception) {
+                if (broadcastCall?.isCanceled() != true) {
+                    Log.d(TAG, "SSE error: ${ex.message}")
+                }
+            }
+        }
     }
 
     private suspend fun handleChatSseData(fromUid: String, payload: String) {
@@ -259,9 +276,4 @@ class MessageSyncManager(
         private const val TAG = "MessageSyncManager"
     }
 
-    private enum class Channel {
-        NONE,
-        CHAT,
-        BROADCAST
-    }
 }

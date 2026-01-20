@@ -248,6 +248,11 @@ class ChatRepository(
                 val config = storage.readContactsConfig()
                 val contact = config[uid] ?: return@withChatLock IncomingResult(false, "联系人不存在", false)
 
+                val history = storage.readChatHistory(uid)
+                if (history.containsKey(ts.toString())) {
+                    return@withChatLock IncomingResult(false, "消息已存在", false)
+                }
+
                 val password = contact.pass
                 val plain = crypto.decryptText(cipherText)
 
