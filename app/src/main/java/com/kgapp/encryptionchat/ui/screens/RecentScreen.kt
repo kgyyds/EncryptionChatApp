@@ -1,6 +1,5 @@
 package com.kgapp.encryptionchat.ui.screens
 
-import android.widget.Toast
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.background
@@ -25,15 +24,11 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Icon
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
+import android.widget.Toast
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -47,10 +42,7 @@ import com.kgapp.encryptionchat.data.ChatRepository
 import com.kgapp.encryptionchat.data.sync.MessageSyncManager
 import com.kgapp.encryptionchat.ui.viewmodel.RecentViewModel
 import com.kgapp.encryptionchat.ui.viewmodel.RepositoryViewModelFactory
-import com.kgapp.encryptionchat.util.MessagePullPreferences
-import com.kgapp.encryptionchat.util.PullMode
 import com.kgapp.encryptionchat.util.UnreadCounter
-import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -61,19 +53,13 @@ fun RecentScreen(
 ) {
     val viewModel: RecentViewModel = viewModel(factory = RepositoryViewModelFactory(repository))
     val state = viewModel.state.collectAsStateWithLifecycle()
-    val pullMode = MessagePullPreferences.mode.collectAsStateWithLifecycle()
     val unreadCounts = UnreadCounter.counts.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
     val context = LocalContext.current
     val deleteTarget = remember { mutableStateOf<RecentViewModel.RecentItem?>(null) }
-    val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
         viewModel.refresh()
-    }
-
-    LaunchedEffect(pullMode.value) {
-        messageSyncManager.updateMode(pullMode.value, null)
     }
 
     LaunchedEffect(Unit) {
@@ -87,21 +73,6 @@ fun RecentScreen(
         topBar = {
             TopAppBar(
                 title = { Text("最近聊天") },
-                actions = {
-                    if (pullMode.value != PullMode.GLOBAL_SSE) {
-                        IconButton(onClick = {
-                            scope.launch {
-                                val message = messageSyncManager.refreshRecentChats()
-                                if (!message.isNullOrBlank()) {
-                                    Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
-                                }
-                                viewModel.refresh()
-                            }
-                        }) {
-                            Icon(imageVector = Icons.Default.Refresh, contentDescription = "Refresh")
-                        }
-                    }
-                },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
             )
         }

@@ -14,6 +14,9 @@ import java.security.spec.X509EncodedKeySpec
 import javax.crypto.Cipher
 import javax.crypto.spec.OAEPParameterSpec
 import javax.crypto.spec.PSource
+import org.json.JSONArray
+import org.json.JSONObject
+import java.util.TreeMap
 
 class CryptoManager(private val storage: FileStorage) {
     companion object {
@@ -149,6 +152,21 @@ class CryptoManager(private val storage: FileStorage) {
         return ts to sigB64
     }
 
+    fun signDataJson(dataJson: String): String {
+        val privateKey = loadPrivateKey() ?: return ""
+        val signature = Signature.getInstance("SHA256withRSA")
+        signature.initSign(privateKey)
+        signature.update(dataJson.toByteArray(Charsets.UTF_8))
+        val sigBytes = signature.sign()
+        return java.util.Base64.getEncoder().encodeToString(sigBytes)
+    }
+
+    fun canonicalizeDataForSigning(value: Any?): String {
+        val builder = StringBuilder()
+        appendJsonValue(builder, value)
+        return builder.toString()
+    }
+
     private fun loadPrivateKey(): PrivateKey? {
         val pemBytes = storage.readPrivatePemBytes() ?: return null
         return try {
@@ -175,5 +193,95 @@ class CryptoManager(private val storage: FileStorage) {
             .replace("\n", "")
             .trim()
         return java.util.Base64.getDecoder().decode(normalized)
+    }
+
+    private fun appendJsonValue(builder: StringBuilder, value: Any?) {
+        when (value) {
+            null -> builder.append("null")
+            is String -> builder.append("\"").append(escapeJsonString(value)).append("\"")
+            is Number, is Boolean -> builder.append(value.toString())
+            is Map<*, *> -> appendJsonObject(builder, value)
+            is Iterable<*> -> appendJsonArray(builder, value)
+            is Array<*> -> appendJsonArray(builder, value.asIterable())
+            is JSONObject -> appendJsonObject(builder, value)
+            is JSONArray -> appendJsonArray(builder, value)
+            else -> builder.append("\"").append(escapeJsonString(value.toString())).append("\"")
+        }
+    }
+
+    private fun appendJsonObject(builder: StringBuilder, value: Map<*, *>) {
+        val sorted = TreeMap<String, Any?>()
+        value.forEach { (key, entryValue) ->
+            if (key != null) {
+                sorted[key.toString()] = entryValue
+            }
+        }
+        builder.append("{")
+        sorted.entries.forEachIndexed { index, entry ->
+            if (index > 0) builder.append(",")
+            builder.append("\"").append(escapeJsonString(entry.key)).append("\":")
+            appendJsonValue(builder, entry.value)
+        }
+        builder.append("}")
+    }
+
+    private fun appendJsonObject(builder: StringBuilder, value: JSONObject) {
+        val sorted = TreeMap<String, Any?>()
+        val keys = value.keys()
+        while (keys.hasNext()) {
+            val key = keys.next()
+            sorted[key] = value.opt(key)
+        }
+        builder.append("{")
+        sorted.entries.forEachIndexed { index, entry ->
+            if (index > 0) builder.append(",")
+            builder.append("\"").append(escapeJsonString(entry.key)).append("\":")
+            appendJsonValue(builder, entry.value)
+        }
+        builder.append("}")
+    }
+
+    private fun appendJsonArray(builder: StringBuilder, value: Iterable<*>) {
+        builder.append("[")
+        val iterator = value.iterator()
+        var index = 0
+        while (iterator.hasNext()) {
+            if (index > 0) builder.append(",")
+            appendJsonValue(builder, iterator.next())
+            index += 1
+        }
+        builder.append("]")
+    }
+
+    private fun appendJsonArray(builder: StringBuilder, value: JSONArray) {
+        builder.append("[")
+        for (index in 0 until value.length()) {
+            if (index > 0) builder.append(",")
+            appendJsonValue(builder, value.opt(index))
+        }
+        builder.append("]")
+    }
+
+    private fun escapeJsonString(value: String): String {
+        val escaped = StringBuilder(value.length + 16)
+        for (ch in value) {
+            when (ch) {
+                '\\' -> escaped.append("\\\\")
+                '"' -> escaped.append("\\\"")
+                '\b' -> escaped.append("\\b")
+                '\u000C' -> escaped.append("\\f")
+                '\n' -> escaped.append("\\n")
+                '\r' -> escaped.append("\\r")
+                '\t' -> escaped.append("\\t")
+                else -> {
+                    if (ch < ' ') {
+                        escaped.append(String.format("\\u%04x", ch.code))
+                    } else {
+                        escaped.append(ch)
+                    }
+                }
+            }
+        }
+        return escaped.toString()
     }
 }

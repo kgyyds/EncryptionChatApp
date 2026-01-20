@@ -29,6 +29,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import com.kgapp.encryptionchat.data.ChatRepository
 import com.kgapp.encryptionchat.data.sync.MessageSyncManager
+import com.kgapp.encryptionchat.ui.screens.ApiSettingsScreen
 import com.kgapp.encryptionchat.ui.screens.AddContactScreen
 import com.kgapp.encryptionchat.ui.screens.ChatScreen
 import com.kgapp.encryptionchat.ui.screens.ContactsScreen
@@ -36,7 +37,6 @@ import com.kgapp.encryptionchat.ui.screens.DebugScreen
 import com.kgapp.encryptionchat.ui.screens.DecoyTabs
 import com.kgapp.encryptionchat.ui.screens.GateScreen
 import com.kgapp.encryptionchat.ui.screens.KeyManagementScreen
-import com.kgapp.encryptionchat.ui.screens.MessagePullSettingsScreen
 import com.kgapp.encryptionchat.ui.screens.RecentScreen
 import com.kgapp.encryptionchat.ui.screens.SecuritySettingsScreen
 import com.kgapp.encryptionchat.ui.screens.SettingsScreen
@@ -45,8 +45,6 @@ import com.kgapp.encryptionchat.ui.screens.TimeDisplaySettingsScreen
 import com.kgapp.encryptionchat.security.SessionState
 import com.kgapp.encryptionchat.security.SessionMode
 import com.kgapp.encryptionchat.security.DuressAction
-import com.kgapp.encryptionchat.util.MessagePullPreferences
-import com.kgapp.encryptionchat.util.PullMode
 
 sealed class Screen(val route: String) {
     data object Gate : Screen("gate")
@@ -58,7 +56,7 @@ sealed class Screen(val route: String) {
     data object KeyManagement : Screen("key_management")
     data object ThemeSettings : Screen("theme_settings")
     data object TimeDisplaySettings : Screen("time_display_settings")
-    data object MessagePullSettings : Screen("message_pull_settings")
+    data object ApiSettings : Screen("api_settings")
     data object SecuritySettings : Screen("security_settings")
     data object DecoyTabs : Screen("decoy_tabs")
     data object DecoyChat : Screen("decoy/chat/{cid}") {
@@ -111,7 +109,7 @@ fun EncryptionChatApp(repository: ChatRepository, messageSyncManager: MessageSyn
                 onOpenThemeSettings = { navController.navigate(Screen.ThemeSettings.route) },
                 onOpenSecurity = { navController.navigate(Screen.SecuritySettings.route) },
                 onOpenTimeDisplay = { navController.navigate(Screen.TimeDisplaySettings.route) },
-                onOpenMessagePull = { navController.navigate(Screen.MessagePullSettings.route) }
+                onOpenApiSettings = { navController.navigate(Screen.ApiSettings.route) }
             )
         }
         composable(Screen.AddContact.route) {
@@ -156,17 +154,14 @@ fun EncryptionChatApp(repository: ChatRepository, messageSyncManager: MessageSyn
             }
             TimeDisplaySettingsScreen(onBack = { navController.popBackStack() })
         }
-        composable(Screen.MessagePullSettings.route) {
+        composable(Screen.ApiSettings.route) {
             if (!unlocked || sessionMode != SessionMode.NORMAL) {
                 navController.navigate(Screen.Gate.route) {
-                    popUpTo(Screen.MessagePullSettings.route) { inclusive = true }
+                    popUpTo(Screen.ApiSettings.route) { inclusive = true }
                 }
                 return@composable
             }
-            MessagePullSettingsScreen(
-                messageSyncManager = messageSyncManager,
-                onBack = { navController.popBackStack() }
-            )
+            ApiSettingsScreen(onBack = { navController.popBackStack() })
         }
         composable(Screen.SecuritySettings.route) {
             if (!unlocked || sessionMode != SessionMode.NORMAL) {
@@ -247,16 +242,13 @@ private fun TabScaffold(
     onOpenThemeSettings: () -> Unit,
     onOpenSecurity: () -> Unit,
     onOpenTimeDisplay: () -> Unit,
-    onOpenMessagePull: () -> Unit
+    onOpenApiSettings: () -> Unit
 ) {
     var selectedTab by rememberSaveable { mutableStateOf(Screen.Recent.route) }
     val tabs = listOf(Screen.Recent, Screen.Contacts, Screen.Settings)
-    val pullMode by MessagePullPreferences.mode.collectAsState()
 
-    LaunchedEffect(selectedTab, pullMode) {
-        if (selectedTab != Screen.Recent.route) {
-            messageSyncManager.updateMode(pullMode, null)
-        }
+    LaunchedEffect(selectedTab) {
+        messageSyncManager.startBroadcastSse()
     }
 
     Scaffold(
@@ -303,7 +295,7 @@ private fun TabScaffold(
                     onOpenThemeSettings = onOpenThemeSettings,
                     onOpenSecurity = onOpenSecurity,
                     onOpenTimeDisplay = onOpenTimeDisplay,
-                    onOpenMessagePull = onOpenMessagePull
+                    onOpenApiSettings = onOpenApiSettings
                 )
             }
         }
