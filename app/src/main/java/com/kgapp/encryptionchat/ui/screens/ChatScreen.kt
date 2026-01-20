@@ -172,6 +172,8 @@ val otherAvatar = remember(state.value.remark) {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .imePadding()              // ✅ 放到根上
+                .navigationBarsPadding()   // ✅ 放到根上
                 .background(colors.background)
         ) {
             LazyColumn(
@@ -228,9 +230,7 @@ val otherAvatar = remember(state.value.remark) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(12.dp)
-                    .imePadding()
-                    .navigationBarsPadding(),
+                    .padding(12.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 OutlinedTextField(
