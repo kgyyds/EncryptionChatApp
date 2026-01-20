@@ -47,10 +47,10 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.awaitHorizontalTouchSlopOrCancellation
-import androidx.compose.foundation.gestures.horizontalDrag
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
 import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kgapp.encryptionchat.data.ChatRepository
@@ -151,6 +151,7 @@ private fun SwipeableRecentItem(
 ) {
     val density = LocalDensity.current
     val scope = rememberCoroutineScope()
+    val viewConfig = LocalViewConfiguration.current
     val shape = MaterialTheme.shapes.medium
     val actionWidth = 86.dp
     val totalActionsWidth = actionWidth * 3
@@ -206,31 +207,49 @@ private fun SwipeableRecentItem(
             .fillMaxWidth()
             .padding(vertical = 6.dp)
             .clip(shape)
-    ) {
-        Row(
-            modifier = Modifier
-                .matchParentSize()
-                .pointerInput(Unit) {
-                    awaitEachGesture {
-                        val velocityTracker = VelocityTracker()
-                        val down = awaitFirstDown()
-                        velocityTracker.addPosition(down.uptimeMillis, down.position)
-                        val drag = awaitHorizontalTouchSlopOrCancellation(down.id) { change, over ->
-                            change.consume()
-                            handleDragDelta(over)
-                            velocityTracker.addPosition(change.uptimeMillis, change.position)
-                        }
-                        if (drag != null) {
-                            horizontalDrag(drag.id) { change ->
-                                handleDragDelta(change.position.x - change.previousPosition.x)
-                                change.consume()
-                                velocityTracker.addPosition(change.uptimeMillis, change.position)
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    val velocityTracker = VelocityTracker()
+                    val down = awaitFirstDown()
+                    val touchSlop = viewConfig.touchSlop
+                    var totalDx = 0f
+                    var totalDy = 0f
+                    var dragging = false
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                        if (change.changedToUpIgnoreConsumed()) {
+                            if (dragging) {
+                                val velocity = velocityTracker.calculateVelocity().x
+                                handleDragEnd(velocity)
                             }
-                            val velocity = velocityTracker.calculateVelocity().x
-                            handleDragEnd(velocity)
+                            break
+                        }
+                        val dx = change.position.x - change.previousPosition.x
+                        val dy = change.position.y - change.previousPosition.y
+                        velocityTracker.addPosition(change.uptimeMillis, change.position)
+                        if (!dragging) {
+                            totalDx += dx
+                            totalDy += dy
+                            if (kotlin.math.abs(totalDx) > touchSlop &&
+                                kotlin.math.abs(totalDx) > kotlin.math.abs(totalDy)
+                            ) {
+                                dragging = true
+                                change.consume()
+                                handleDragDelta(totalDx)
+                                totalDx = 0f
+                                totalDy = 0f
+                            }
+                        } else {
+                            handleDragDelta(dx)
+                            change.consume()
                         }
                     }
-                },
+                }
+            }
+    ) {
+        Row(
+            modifier = Modifier.matchParentSize(),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Spacer(modifier = Modifier.weight(1f))
