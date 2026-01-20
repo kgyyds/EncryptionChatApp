@@ -21,7 +21,8 @@ class RecentViewModel(
         val remark: String,
         val lastText: String,
         val lastTime: String,
-        val lastTs: String
+        val lastTs: String,
+        val pinned: Boolean
     )
 
     private val _state = MutableStateFlow(RecentState())
@@ -39,10 +40,25 @@ class RecentViewModel(
                     remark = item.remark,
                     lastText = item.lastText,
                     lastTime = TimeFormatter.formatRecentTimestamp(item.lastTs),
-                    lastTs = item.lastTs
+                    lastTs = item.lastTs,
+                    pinned = item.pinned
                 )
             }
             _state.value = RecentState(recents)
+        }
+    }
+
+    fun hideFromRecent(uid: String) {
+        viewModelScope.launch {
+            repository.updateContactShowInRecent(uid, false)
+            refresh()
+        }
+    }
+
+    fun togglePinned(uid: String) {
+        viewModelScope.launch {
+            repository.togglePinned(uid)
+            refresh()
         }
     }
 
