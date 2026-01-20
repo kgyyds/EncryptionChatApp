@@ -45,6 +45,12 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitHorizontalTouchSlopOrCancellation
+import androidx.compose.foundation.gestures.horizontalDrag
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kgapp.encryptionchat.data.ChatRepository
@@ -154,15 +160,7 @@ private fun SwipeableRecentItem(
     val velocityThreshold = with(density) { 900.dp.toPx() }
     val offsetX = remember { Animatable(0f) }
 
-    LaunchedEffect(isOpen, maxOffset) {
-        val target = if (isOpen) maxOffset else 0f
-        offsetX.animateTo(
-            target,
-            spring(dampingRatio = 0.9f, stiffness = 450f)
-        )
-    }
-
-    val draggableState = rememberDraggableState { delta ->
+    val handleDragDelta: (Float) -> Unit = { delta ->
         val rawNext = offsetX.value + delta
         val adjustedDelta = if (rawNext > 0f || rawNext < maxOffset) {
             delta * 0.3f
@@ -175,6 +173,34 @@ private fun SwipeableRecentItem(
         }
     }
 
+    val handleDragEnd: (Float) -> Unit = { velocity ->
+        val shouldOpen = when {
+            velocity < -velocityThreshold -> true
+            velocity > velocityThreshold -> false
+            else -> kotlin.math.abs(offsetX.value) > openThreshold
+        }
+        val target = if (shouldOpen) maxOffset else 0f
+        scope.launch {
+            offsetX.animateTo(
+                target,
+                spring(dampingRatio = 0.9f, stiffness = 450f)
+            )
+        }
+        onOpenChange(if (shouldOpen) item.uid else null)
+    }
+
+    LaunchedEffect(isOpen, maxOffset) {
+        val target = if (isOpen) maxOffset else 0f
+        offsetX.animateTo(
+            target,
+            spring(dampingRatio = 0.9f, stiffness = 450f)
+        )
+    }
+
+    val draggableState = rememberDraggableState { delta ->
+        handleDragDelta(delta)
+    }
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -182,7 +208,29 @@ private fun SwipeableRecentItem(
             .clip(shape)
     ) {
         Row(
-            modifier = Modifier.matchParentSize(),
+            modifier = Modifier
+                .matchParentSize()
+                .pointerInput(Unit) {
+                    awaitEachGesture {
+                        val velocityTracker = VelocityTracker()
+                        val down = awaitFirstDown()
+                        velocityTracker.addPosition(down.uptimeMillis, down.position)
+                        val drag = awaitHorizontalTouchSlopOrCancellation(down.id) { change, over ->
+                            change.consume()
+                            handleDragDelta(over)
+                            velocityTracker.addPosition(change.uptimeMillis, change.position)
+                        }
+                        if (drag != null) {
+                            horizontalDrag(drag.id) { change ->
+                                handleDragDelta(change.position.x - change.previousPosition.x)
+                                change.consume()
+                                velocityTracker.addPosition(change.uptimeMillis, change.position)
+                            }
+                            val velocity = velocityTracker.calculateVelocity().x
+                            handleDragEnd(velocity)
+                        }
+                    }
+                },
             verticalAlignment = Alignment.CenterVertically
         ) {
             Spacer(modifier = Modifier.weight(1f))
@@ -215,19 +263,7 @@ private fun SwipeableRecentItem(
                     orientation = Orientation.Horizontal,
                     state = draggableState,
                     onDragStopped = { velocity ->
-                        val shouldOpen = when {
-                            velocity < -velocityThreshold -> true
-                            velocity > velocityThreshold -> false
-                            else -> kotlin.math.abs(offsetX.value) > openThreshold
-                        }
-                        val target = if (shouldOpen) maxOffset else 0f
-                        scope.launch {
-                            offsetX.animateTo(
-                                target,
-                                spring(dampingRatio = 0.9f, stiffness = 450f)
-                            )
-                        }
-                        onOpenChange(if (shouldOpen) item.uid else null)
+                        handleDragEnd(velocity)
                     }
                 )
                 .clickable {
