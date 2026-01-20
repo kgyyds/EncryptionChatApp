@@ -278,6 +278,7 @@ class MessageSyncManager(
                 delay(backoffMs)
                 backoffMs = (backoffMs * 2).coerceAtMost(MAX_BACKOFF_MS)
             }
+            startBroadcastSseLocked()
         }
     }
 
