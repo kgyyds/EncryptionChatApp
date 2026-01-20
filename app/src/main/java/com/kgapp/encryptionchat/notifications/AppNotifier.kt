@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.app.PendingIntent
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.kgapp.encryptionchat.MainActivity
@@ -48,12 +49,19 @@ class AppNotifier(private val context: Context) {
         unreadCount: Int,
         locked: Boolean
     ) {
-        if (!NotificationPreferences.isNotificationsEnabled(context)) return
-        if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return
+        if (!NotificationPreferences.isNotificationsEnabled(context)) {
+            Log.d(TAG, "Notify skipped: notifications disabled")
+            return
+        }
+        if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) {
+            Log.d(TAG, "Notify skipped: system notifications disabled")
+            return
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) !=
             android.content.pm.PackageManager.PERMISSION_GRANTED
         ) {
+            Log.d(TAG, "Notify skipped: POST_NOTIFICATIONS not granted")
             return
         }
         ensureChannels()
@@ -135,6 +143,7 @@ class AppNotifier(private val context: Context) {
     }
 
     companion object {
+        private const val TAG = "AppNotifier"
         const val EXTRA_OPEN_CHAT_UID = "open_chat_uid"
         private const val CHANNEL_MESSAGES = "channel_messages"
         private const val CHANNEL_SERVICE = "channel_service"
