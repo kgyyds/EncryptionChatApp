@@ -133,7 +133,16 @@ fun DecoyChatScreen(conversationId: String, onBack: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             items(messages) { message ->
-                MessageBubble(text = message.text, speaker = message.speaker, timestamp = message.time)
+                MessageBubble(
+                    text = message.text,
+                    speaker = message.speaker,
+                    timestamp = message.time,
+                    avatarText = when (message.speaker) {
+                        0 -> "我"
+                        1 -> "对"
+                        else -> null
+                    }
+                )
             }
         }
     }

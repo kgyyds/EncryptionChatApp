@@ -1,23 +1,37 @@
 package com.kgapp.encryptionchat.ui.components
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.unit.dp
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun MessageBubble(text: String, speaker: Int, timestamp: String?) {
+fun MessageBubble(
+    text: String,
+    speaker: Int,
+    timestamp: String?,
+    avatarText: String?,
+    onLongPress: (() -> Unit)? = null
+) {
     val isMine = speaker == 0
     val isSystem = speaker == 2
     val colors = MaterialTheme.colorScheme
@@ -49,10 +63,22 @@ fun MessageBubble(text: String, speaker: Int, timestamp: String?) {
         },
         verticalAlignment = Alignment.CenterVertically
     ) {
+        if (!isSystem && !isMine) {
+            Avatar(
+                text = avatarText,
+                backgroundColor = colors.secondaryContainer,
+                contentColor = colors.onSecondaryContainer
+            )
+            Spacer(modifier = Modifier.size(8.dp))
+        }
         Surface(
             color = backgroundColor,
             shape = RoundedCornerShape(14.dp),
-            border = border
+            border = border,
+            modifier = Modifier.combinedClickable(
+                onClick = {},
+                onLongClick = { onLongPress?.invoke() }
+            )
         ) {
             Column(modifier = Modifier.padding(12.dp)) {
                 Text(
@@ -68,6 +94,42 @@ fun MessageBubble(text: String, speaker: Int, timestamp: String?) {
                         modifier = Modifier.padding(top = 4.dp)
                     )
                 }
+            }
+        }
+        if (!isSystem && isMine) {
+            Spacer(modifier = Modifier.size(8.dp))
+            Avatar(
+                text = avatarText,
+                backgroundColor = colors.primaryContainer,
+                contentColor = colors.onPrimaryContainer
+            )
+        }
+    }
+}
+
+@Composable
+private fun Avatar(
+    text: String?,
+    backgroundColor: androidx.compose.ui.graphics.Color,
+    contentColor: androidx.compose.ui.graphics.Color
+) {
+    Box(
+        modifier = Modifier
+            .size(32.dp)
+            .clip(CircleShape)
+            .padding(0.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Surface(color = backgroundColor, shape = CircleShape) {
+            Box(
+                modifier = Modifier.size(32.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = text?.trim().orEmpty().ifBlank { "?" }.take(1),
+                    color = contentColor,
+                    style = MaterialTheme.typography.labelLarge
+                )
             }
         }
     }

@@ -15,6 +15,7 @@ class ChatViewModel(
     data class ChatState(
         val uid: String = "",
         val remark: String = "",
+        val selfName: String = "",
         val messages: List<UiMessage> = emptyList(),
         val hasHistory: Boolean = true
     )
@@ -51,6 +52,7 @@ class ChatViewModel(
             _state.value = ChatState(
                 uid = uid,
                 remark = remark,
+                selfName = selfName,
                 messages = uiMessages,
                 hasHistory = filteredHistory.isNotEmpty()
             )

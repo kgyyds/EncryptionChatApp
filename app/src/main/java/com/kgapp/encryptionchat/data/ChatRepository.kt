@@ -140,6 +140,16 @@ class ChatRepository(
             }
         }
 
+    suspend fun deleteMessage(uid: String, ts: String): Boolean = withContext(Dispatchers.IO) {
+        withChatLock(uid) {
+            val history = storage.readChatHistory(uid)
+            if (!history.containsKey(ts)) return@withChatLock false
+            history.remove(ts)
+            storage.writeChatHistory(uid, history)
+            true
+        }
+    }
+
     suspend fun sendChat(uid: String, text: String): SendResult = withContext(Dispatchers.IO) {
         val config = storage.readContactsConfig()
         val contact = config[uid] ?: return@withContext SendResult(false, null, "联系人不存在", null)

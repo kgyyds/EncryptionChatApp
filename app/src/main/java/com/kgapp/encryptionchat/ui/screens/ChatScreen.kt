@@ -25,6 +25,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -34,7 +36,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -73,6 +78,9 @@ fun ChatScreen(
     val scope = rememberCoroutineScope()
     val showEmptyToast = remember(uid) { mutableStateOf(false) }
     val colors = MaterialTheme.colorScheme
+    val clipboardManager = LocalClipboardManager.current
+    val menuExpanded = remember { mutableStateOf(false) }
+    val selectedMessage = remember { mutableStateOf<ChatViewModel.UiMessage?>(null) }
     val isAtBottom = remember {
         derivedStateOf {
             val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
@@ -181,11 +189,44 @@ fun ChatScreen(
             ) {
                 items(state.value.messages, key = { it.ts + ":" + it.speaker }) { message ->
                     val timeLabel = TimeFormatter.formatMessageTimestamp(message.ts, timeMode.value)
-                    MessageBubble(
-                        text = message.text,
-                        speaker = message.speaker,
-                        timestamp = timeLabel
-                    )
+                    Box {
+                        MessageBubble(
+                            text = message.text,
+                            speaker = message.speaker,
+                            timestamp = timeLabel,
+                            avatarText = when (message.speaker) {
+                                0 -> selfAvatar
+                                1 -> otherAvatar
+                                else -> null
+                            },
+                            onLongPress = {
+                                selectedMessage.value = message
+                                menuExpanded.value = true
+                            }
+                        )
+                        DropdownMenu(
+                            expanded = menuExpanded.value && selectedMessage.value?.ts == message.ts,
+                            onDismissRequest = { menuExpanded.value = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("复制") },
+                                onClick = {
+                                    clipboardManager.setText(AnnotatedString(message.text))
+                                    Toast.makeText(context, "已复制", Toast.LENGTH_SHORT).show()
+                                    menuExpanded.value = false
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("删除") },
+                                onClick = {
+                                    menuExpanded.value = false
+                                    scope.launch {
+                                        viewModel.deleteMessage(message.ts)
+                                    }
+                                }
+                            )
+                        }
+                    }
                 }
             }
             Row(
