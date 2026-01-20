@@ -35,7 +35,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import com.kgapp.encryptionchat.security.AuthMode
 import com.kgapp.encryptionchat.security.DuressAction
 import com.kgapp.encryptionchat.security.SecuritySettings
 import androidx.compose.foundation.layout.Row
@@ -64,6 +63,7 @@ fun SecuritySettingsScreen(onBack: () -> Unit) {
             )
         }
     ) { padding ->
+        val cardColors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -74,7 +74,7 @@ fun SecuritySettingsScreen(onBack: () -> Unit) {
         ) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                colors = cardColors
             ) {
                 RowItem(
                     title = "启用应用锁",
@@ -104,30 +104,7 @@ fun SecuritySettingsScreen(onBack: () -> Unit) {
 
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-            ) {
-                SectionTitle("认证方式")
-                OptionRow(
-                    title = "系统认证",
-                    selected = config.value.authMode == AuthMode.SYSTEM,
-                    onSelect = {
-                        SecuritySettings.setAuthMode(context, AuthMode.SYSTEM)
-                        config.value = SecuritySettings.readConfig(context)
-                    }
-                )
-                OptionRow(
-                    title = "App 内 PIN",
-                    selected = config.value.authMode == AuthMode.PIN,
-                    onSelect = {
-                        SecuritySettings.setAuthMode(context, AuthMode.PIN)
-                        config.value = SecuritySettings.readConfig(context)
-                    }
-                )
-            }
-
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                colors = cardColors
             ) {
                 SectionTitle("PIN 设置")
                 OutlinedTextField(
@@ -166,7 +143,7 @@ fun SecuritySettingsScreen(onBack: () -> Unit) {
 
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                colors = cardColors
             ) {
                 SectionTitle("触发动作")
                 OptionRow(

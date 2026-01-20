@@ -11,7 +11,6 @@ object SecuritySettings {
     private const val PREFS_NAME = "security_settings"
     private const val KEY_APP_LOCK_ENABLED = "app_lock_enabled"
     private const val KEY_DURESS_ENABLED = "duress_enabled"
-    private const val KEY_AUTH_MODE = "auth_mode"
     private const val KEY_DURESS_ACTION = "duress_action"
     private const val KEY_NORMAL_PIN_HASH = "normal_pin_hash"
     private const val KEY_DURESS_PIN_HASH = "duress_pin_hash"
@@ -28,7 +27,6 @@ object SecuritySettings {
         return SecurityConfig(
             appLockEnabled = appLockEnabled,
             duressEnabled = prefs.getBoolean(KEY_DURESS_ENABLED, false),
-            authMode = AuthMode.fromStorage(prefs.getInt(KEY_AUTH_MODE, AuthMode.SYSTEM.storageValue)),
             duressAction = DuressAction.fromStorage(prefs.getInt(KEY_DURESS_ACTION, DuressAction.DECOY.storageValue)),
             normalPinHash = prefs.getString(KEY_NORMAL_PIN_HASH, null),
             duressPinHash = prefs.getString(KEY_DURESS_PIN_HASH, null)
@@ -46,13 +44,6 @@ object SecuritySettings {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit()
             .putBoolean(KEY_DURESS_ENABLED, enabled)
-            .apply()
-    }
-
-    fun setAuthMode(context: Context, authMode: AuthMode) {
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit()
-            .putInt(KEY_AUTH_MODE, authMode.storageValue)
             .apply()
     }
 

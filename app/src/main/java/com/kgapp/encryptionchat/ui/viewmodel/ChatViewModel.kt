@@ -15,6 +15,7 @@ class ChatViewModel(
     data class ChatState(
         val uid: String = "",
         val remark: String = "",
+        val selfName: String = "",
         val messages: List<UiMessage> = emptyList(),
         val hasHistory: Boolean = true,
         val backgroundId: String = "default"
@@ -36,6 +37,7 @@ class ChatViewModel(
             val contact = contacts[uid]
             val remark = contact?.Remark ?: uid
             val backgroundId = contact?.chatBackground ?: "default"
+            val selfName = repository.getSelfName().orEmpty()
             val history = repository.readChatHistory(uid)
                 .toList()
                 .sortedBy { it.first.toLongOrNull() ?: 0L }
@@ -53,6 +55,7 @@ class ChatViewModel(
             _state.value = ChatState(
                 uid = uid,
                 remark = remark,
+                selfName = selfName,
                 messages = uiMessages,
                 hasHistory = filteredHistory.isNotEmpty(),
                 backgroundId = backgroundId
@@ -114,5 +117,13 @@ class ChatViewModel(
                 null
             }
         }
+    }
+
+    suspend fun deleteMessage(ts: String): Boolean {
+        val uid = _state.value.uid
+        if (uid.isBlank()) return false
+        val deleted = repository.deleteMessage(uid, ts)
+        refresh()
+        return deleted
     }
 }

@@ -96,11 +96,6 @@ class ChatRepository(
         history.keys.mapNotNull { it.toLongOrNull() }.maxOrNull() ?: 0L
     }
 
-    suspend fun getLastTimestamp(uid: String): Long = withContext(Dispatchers.IO) {
-        val history = storage.readChatHistory(uid)
-        history.keys.mapNotNull { it.toLongOrNull() }.maxOrNull() ?: 0L
-    }
-
     suspend fun deleteChatHistory(uid: String) = withContext(Dispatchers.IO) {
         withChatLock(uid) {
             val ts = Instant.now().epochSecond.toString()
@@ -152,6 +147,16 @@ class ChatRepository(
                 storage.replaceChatTimestamp(uid, oldTs, newTs, ChatMessage(Spokesman = speaker, text = text))
             }
         }
+
+    suspend fun deleteMessage(uid: String, ts: String): Boolean = withContext(Dispatchers.IO) {
+        withChatLock(uid) {
+            val history = storage.readChatHistory(uid)
+            if (!history.containsKey(ts)) return@withChatLock false
+            history.remove(ts)
+            storage.writeChatHistory(uid, history)
+            true
+        }
+    }
 
     suspend fun sendChat(uid: String, text: String): SendResult = withContext(Dispatchers.IO) {
         val config = storage.readContactsConfig()
