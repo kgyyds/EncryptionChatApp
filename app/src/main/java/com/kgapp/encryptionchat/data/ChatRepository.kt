@@ -58,6 +58,25 @@ class ChatRepository(
     suspend fun updateContactRemark(uid: String, remark: String): Boolean =
         withContext(Dispatchers.IO) { storage.updateContactRemark(uid, remark) }
 
+    suspend fun updateContactShowInRecent(uid: String, show: Boolean): Boolean =
+        withContext(Dispatchers.IO) {
+            val config = storage.readContactsConfig()
+            val existing = config[uid] ?: return@withContext false
+            if (existing.showInRecent == show) return@withContext true
+            config[uid] = existing.copy(showInRecent = show)
+            storage.writeContactsConfig(config)
+            true
+        }
+
+    suspend fun togglePinned(uid: String): Boolean =
+        withContext(Dispatchers.IO) {
+            val config = storage.readContactsConfig()
+            val existing = config[uid] ?: return@withContext false
+            config[uid] = existing.copy(pinned = !existing.pinned)
+            storage.writeContactsConfig(config)
+            true
+        }
+
     suspend fun readContactsRaw(): String = withContext(Dispatchers.IO) { storage.readContactsConfigRaw() }
 
     suspend fun addContact(remark: String, pubKey: String, password: String): String = withContext(Dispatchers.IO) {
@@ -99,7 +118,8 @@ class ChatRepository(
         val uid: String,
         val remark: String,
         val lastText: String,
-        val lastTs: String
+        val lastTs: String,
+        val pinned: Boolean
     )
 
     suspend fun getRecentChats(): List<RecentChat> = withContext(Dispatchers.IO) {
@@ -113,16 +133,22 @@ class ChatRepository(
             val lastEpoch = lastEntry.key.toLongOrNull() ?: 0L
             if (lastEpoch <= 0L) return@mapNotNull null
 
-            val remark = contacts[uid]?.Remark ?: uid
+            val contact = contacts[uid] ?: return@mapNotNull null
+            if (!contact.showInRecent) return@mapNotNull null
+            val remark = contact.Remark.ifBlank { uid }
             RecentChat(
                 uid = uid,
                 remark = remark,
                 lastText = lastEntry.value.text,
-                lastTs = lastEntry.key
+                lastTs = lastEntry.key,
+                pinned = contact.pinned
             )
         }
 
-        recents.sortedByDescending { it.lastTs.toLongOrNull() ?: 0L }
+        recents.sortedWith(
+            compareByDescending<RecentChat> { it.pinned }
+                .thenByDescending { it.lastTs.toLongOrNull() ?: 0L }
+        )
     }
 
     suspend fun appendMessage(uid: String, ts: String, speaker: Int, text: String) =
@@ -264,6 +290,10 @@ class ChatRepository(
                 if (ts <= 0L || cleanText.isBlank()) return@withChatLock IncomingResult(false, "消息格式异常", false)
 
                 storage.upsertChatMessage(uid, ts.toString(), ChatMessage(Spokesman = 1, text = cleanText))
+                if (!contact.showInRecent) {
+                    config[uid] = contact.copy(showInRecent = true)
+                    storage.writeContactsConfig(config)
+                }
                 IncomingResult(true, null, false)
             }
         }
