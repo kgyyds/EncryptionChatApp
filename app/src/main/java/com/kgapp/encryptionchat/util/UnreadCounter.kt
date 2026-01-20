@@ -39,6 +39,15 @@ object UnreadCounter {
         update(context, emptyMap())
     }
 
+    fun markUnread(context: Context, uid: String) {
+        val updated = _counts.value.toMutableMap()
+        val current = updated[uid] ?: 0
+        if (current <= 0) {
+            updated[uid] = 1
+            update(context, updated)
+        }
+    }
+
     private fun update(context: Context, map: Map<String, Int>) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit()

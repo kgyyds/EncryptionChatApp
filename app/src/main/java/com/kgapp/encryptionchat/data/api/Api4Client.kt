@@ -13,7 +13,7 @@ import org.json.JSONObject
 import java.net.UnknownServiceException
 import java.util.concurrent.TimeUnit
 
-class Api2Client(
+class Api4Client(
     private val crypto: CryptoManager,
     private val baseUrlProvider: () -> String,
     private val client: OkHttpClient = OkHttpClient(),
@@ -30,7 +30,7 @@ class Api2Client(
         val envelope = buildSignedEnvelope(data)
             ?: return@withContext ApiResult.Failure("本地密钥缺失")
         val request = Request.Builder()
-            .url(baseUrlProvider())
+            .url(resolveApiUrl())
             .post(envelope.toRequestBody(JSON_MEDIA_TYPE))
             .header("User-Agent", USER_AGENT)
             .header("Content-Type", "application/json; charset=utf-8")
@@ -53,7 +53,7 @@ class Api2Client(
     fun openSseStream(data: Map<String, Any>): Call? {
         val envelope = buildSignedEnvelope(data) ?: return null
         val request = Request.Builder()
-            .url(baseUrlProvider())
+            .url(resolveApiUrl())
             .post(envelope.toRequestBody(JSON_MEDIA_TYPE))
             .header("User-Agent", USER_AGENT)
             .header("Content-Type", "application/json; charset=utf-8")
@@ -64,7 +64,7 @@ class Api2Client(
     private fun buildSignedEnvelope(data: Map<String, Any>): String? {
         val pub = crypto.computePemBase64() ?: return null
         val payload = data.toMutableMap()
-        
+
         payload["ts"] = (System.currentTimeMillis() / 1000L)
         val dataJson = crypto.canonicalizeDataForSigning(payload)
         val sig = crypto.signDataJson(dataJson)
@@ -74,6 +74,18 @@ class Api2Client(
         envelope.put("pub", pub)
         envelope.put("data", toJsonValue(payload))
         return envelope.toString()
+    }
+
+    private fun resolveApiUrl(): String {
+        val base = baseUrlProvider().trim().ifBlank { "" }
+        if (base.endsWith("/api/api4.php")) return base
+        val normalized = if (base.endsWith("/")) base.dropLast(1) else base
+        return when {
+            normalized.endsWith("/api/api2.php") -> normalized.removeSuffix("/api/api2.php") + "/api/api4.php"
+            normalized.endsWith("/api/api3.php") -> normalized.removeSuffix("/api/api3.php") + "/api/api4.php"
+            normalized.contains("/api/") -> normalized.substringBefore("/api/") + "/api/api4.php"
+            else -> "$normalized/api/api4.php"
+        }
     }
 
     private fun toJsonValue(value: Any?): Any {
