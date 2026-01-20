@@ -7,7 +7,7 @@ import android.os.IBinder
 import android.util.Log
 import androidx.core.content.ContextCompat
 import com.kgapp.encryptionchat.data.ChatRepository
-import com.kgapp.encryptionchat.data.api.Api2Client
+import com.kgapp.encryptionchat.data.api.Api4Client
 import com.kgapp.encryptionchat.data.crypto.CryptoManager
 import com.kgapp.encryptionchat.data.storage.FileStorage
 import com.kgapp.encryptionchat.data.sync.MessageSyncRegistry
@@ -35,7 +35,7 @@ class MessageSyncService : Service() {
     private var broadcastJob: Job? = null
     private var broadcastCall: Call? = null
     private lateinit var repository: ChatRepository
-    private lateinit var api: Api2Client
+    private lateinit var api: Api4Client
     private lateinit var notifier: AppNotifier
 
     override fun onCreate() {
@@ -45,7 +45,7 @@ class MessageSyncService : Service() {
         UnreadCounter.initialize(this)
         val storage = FileStorage(this)
         val crypto = CryptoManager(storage)
-        api = Api2Client(
+        api = Api4Client(
             crypto = crypto,
             baseUrlProvider = { ApiSettingsPreferences.getBaseUrl(this) }
         )
@@ -94,7 +94,7 @@ class MessageSyncService : Service() {
                     mapOf("uid" to uid, "ts" to lastTs)
                 }
                 val payload = mapOf(
-                    "type" to 3,
+                    "type" to "SseAllMsg",
                     "contacts" to contactPayload
                 )
                 val tsSummary = contactPayload.joinToString(limit = 5) { item ->
@@ -105,7 +105,7 @@ class MessageSyncService : Service() {
                 Log.d(
                     TAG,
                     "Broadcast SSE request url=${ApiSettingsPreferences.getBaseUrl(this@MessageSyncService)} " +
-                        "type=3 contacts=${contactPayload.size} ts=$tsSummary"
+                        "type=SseAllMsg contacts=${contactPayload.size} ts=$tsSummary"
                 )
                 val call = api.openSseStream(payload)
                 if (call == null) {
@@ -121,33 +121,40 @@ class MessageSyncService : Service() {
                         val contentType = response.header("Content-Type")
                         Log.d(TAG, "SSE response code=${response.code} contentType=$contentType")
                         if (!response.isSuccessful) {
-                            Log.d(TAG, "SSE response error: ${response.code}")
+                            val body = response.body?.string()?.take(500)
+                            Log.d(TAG, "SSE response error: ${response.code} body=$body")
                             return@use
                         }
                         if (contentType?.contains("text/event-stream", ignoreCase = true) != true) {
-                            Log.d(TAG, "SSE content-type mismatch: $contentType")
+                            val body = response.body?.string()?.take(500)
+                            Log.d(TAG, "SSE content-type mismatch: $contentType body=$body")
                             return@use
                         }
                         val source = response.body?.source() ?: return@use
-                        var pendingData: String? = null
+                        var pendingData: StringBuilder? = null
                         while (!source.exhausted() && broadcastCall?.isCanceled() != true) {
                             val line = source.readUtf8Line() ?: break
                             if (line == "hb") {
                                 Log.d(TAG, "SSE line: hb")
                                 continue
                             }
-                            if (line.startsWith("data: ")) {
+                            if (line.startsWith("data:")) {
                                 Log.d(TAG, "SSE line: ${line.take(200)}")
                             }
                             if (line.isBlank()) {
-                                if (!pendingData.isNullOrBlank()) {
-                                    handleBroadcastSseData(pendingData)
-                                    pendingData = null
+                                if (pendingData?.isNotEmpty() == true) {
+                                    handleBroadcastSseData(pendingData.toString())
                                 }
+                                pendingData = null
                                 continue
                             }
-                            if (line.startsWith("data: ")) {
-                                pendingData = line.removePrefix("data: ").trim()
+                            if (line.startsWith("data:")) {
+                                val chunk = line.removePrefix("data:").trimStart()
+                                val builder = pendingData ?: StringBuilder().also { pendingData = it }
+                                if (builder.isNotEmpty()) {
+                                    builder.append("\n")
+                                }
+                                builder.append(chunk)
                             }
                         }
                     }
@@ -175,7 +182,7 @@ class MessageSyncService : Service() {
     private suspend fun handleBroadcastSseData(payload: String) {
         val json = JSONObject(payload)
         val fromUid = json.optString("from", "")
-        val text = json.optString("text", "")
+        val text = json.optString("msg", "")
         val ts = json.optLong("ts", 0L)
         Log.d(TAG, "SSE payload parsed from=$fromUid ts=$ts")
         if (fromUid.isBlank() || text.isBlank() || ts <= 0L) return
