@@ -64,7 +64,8 @@ class Api2Client(
     private fun buildSignedEnvelope(data: Map<String, Any>): String? {
         val pub = crypto.computePemBase64() ?: return null
         val payload = data.toMutableMap()
-        payload["ts"] = (System.currentTimeMillis() / 1000L).toString()
+        
+        payload["ts"] = (System.currentTimeMillis() / 1000L)
         val dataJson = crypto.canonicalizeDataForSigning(payload)
         val sig = crypto.signDataJson(dataJson)
         if (sig.isBlank()) return null
