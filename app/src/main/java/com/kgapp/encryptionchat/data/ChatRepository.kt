@@ -59,14 +59,6 @@ class ChatRepository(
     suspend fun updateContactRemark(uid: String, remark: String): Boolean =
         withContext(Dispatchers.IO) { storage.updateContactRemark(uid, remark) }
 
-    suspend fun updateContactBackground(uid: String, background: String): Boolean = withContext(Dispatchers.IO) {
-        val config = storage.readContactsConfig()
-        val existing = config[uid] ?: return@withContext false
-        config[uid] = existing.copy(chatBackground = background)
-        storage.writeContactsConfig(config)
-        true
-    }
-
     suspend fun readContactsRaw(): String = withContext(Dispatchers.IO) { storage.readContactsConfigRaw() }
 
     suspend fun addContact(remark: String, pubKey: String, password: String): String = withContext(Dispatchers.IO) {

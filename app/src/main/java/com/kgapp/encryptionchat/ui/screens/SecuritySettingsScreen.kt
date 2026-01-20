@@ -1,6 +1,7 @@
 package com.kgapp.encryptionchat.ui.screens
 
 import android.widget.Toast
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -76,68 +77,31 @@ fun SecuritySettingsScreen(onBack: () -> Unit) {
                 modifier = Modifier.fillMaxWidth(),
                 colors = cardColors
             ) {
-                RowItem(
-                    title = "启用应用锁",
-                    trailing = {
-                        Switch(
-                            checked = config.value.appLockEnabled,
-                            onCheckedChange = {
-                                SecuritySettings.setAppLockEnabled(context, it)
-                                config.value = SecuritySettings.readConfig(context)
-                            }
-                        )
-                    }
-                )
-                RowItem(
-                    title = "启用胁迫模式",
-                    trailing = {
-                        Switch(
-                            checked = config.value.duressEnabled,
-                            onCheckedChange = {
-                                SecuritySettings.setDuressEnabled(context, it)
-                                config.value = SecuritySettings.readConfig(context)
-                            }
-                        )
-                    }
-                )
-            }
-
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = cardColors
-            ) {
-                SectionTitle("PIN 设置")
-                OutlinedTextField(
-                    value = normalPin.value,
-                    onValueChange = { normalPin.value = it },
-                    label = { Text("正常 PIN") },
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    visualTransformation = PasswordVisualTransformation()
-                )
-                OutlinedTextField(
-                    value = duressPin.value,
-                    onValueChange = { duressPin.value = it },
-                    label = { Text("胁迫 PIN") },
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    visualTransformation = PasswordVisualTransformation()
-                )
-                Button(
-                    onClick = {
-                        if (normalPin.value.isBlank() && duressPin.value.isBlank()) {
-                            Toast.makeText(context, "请输入 PIN", Toast.LENGTH_SHORT).show()
-                            return@Button
+                Column(modifier = Modifier.background(MaterialTheme.colorScheme.surfaceVariant)) {
+                    RowItem(
+                        title = "启用应用锁",
+                        trailing = {
+                            Switch(
+                                checked = config.value.appLockEnabled,
+                                onCheckedChange = {
+                                    SecuritySettings.setAppLockEnabled(context, it)
+                                    config.value = SecuritySettings.readConfig(context)
+                                }
+                            )
                         }
-                        SecuritySettings.savePins(context, normalPin.value, duressPin.value)
-                        normalPin.value = ""
-                        duressPin.value = ""
-                        Toast.makeText(context, "PIN 已保存", Toast.LENGTH_SHORT).show()
-                    },
-                    modifier = Modifier.padding(16.dp),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp)
-                ) {
-                    Text("保存 PIN")
+                    )
+                    RowItem(
+                        title = "启用胁迫模式",
+                        trailing = {
+                            Switch(
+                                checked = config.value.duressEnabled,
+                                onCheckedChange = {
+                                    SecuritySettings.setDuressEnabled(context, it)
+                                    config.value = SecuritySettings.readConfig(context)
+                                }
+                            )
+                        }
+                    )
                 }
             }
 
@@ -145,58 +109,101 @@ fun SecuritySettingsScreen(onBack: () -> Unit) {
                 modifier = Modifier.fillMaxWidth(),
                 colors = cardColors
             ) {
-                SectionTitle("触发动作")
-                OptionRow(
-                    title = "伪装模式",
-                    selected = config.value.duressAction == DuressAction.DECOY,
-                    onSelect = {
-                        SecuritySettings.setDuressAction(context, DuressAction.DECOY)
-                        config.value = SecuritySettings.readConfig(context)
-                    }
-                )
-                OptionRow(
-                    title = "隐藏模式",
-                    selected = config.value.duressAction == DuressAction.HIDE,
-                    onSelect = {
-                        SecuritySettings.setDuressAction(context, DuressAction.HIDE)
-                        config.value = SecuritySettings.readConfig(context)
-                    }
-                )
-                OptionRow(
-                    title = "擦除模式（默认关闭）",
-                    selected = config.value.duressAction == DuressAction.WIPE,
-                    onSelect = {
-                        confirmWipe.value = true
-                    }
-                )
-                if (confirmWipe.value) {
-                    Text(
-                        text = "输入 WIPE 以确认启用擦除模式",
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
-                        style = MaterialTheme.typography.bodySmall
+                Column(modifier = Modifier.background(MaterialTheme.colorScheme.surfaceVariant)) {
+                    SectionTitle("PIN 设置")
+                    OutlinedTextField(
+                        value = normalPin.value,
+                        onValueChange = { normalPin.value = it },
+                        label = { Text("正常 PIN") },
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        visualTransformation = PasswordVisualTransformation()
                     )
                     OutlinedTextField(
-                        value = wipeConfirmText.value,
-                        onValueChange = { wipeConfirmText.value = it },
-                        label = { Text("确认文本") },
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)
+                        value = duressPin.value,
+                        onValueChange = { duressPin.value = it },
+                        label = { Text("胁迫 PIN") },
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        visualTransformation = PasswordVisualTransformation()
                     )
                     Button(
                         onClick = {
-                            if (wipeConfirmText.value.trim() != "WIPE") {
-                                Toast.makeText(context, "确认文本不正确", Toast.LENGTH_SHORT).show()
+                            if (normalPin.value.isBlank() && duressPin.value.isBlank()) {
+                                Toast.makeText(context, "请输入 PIN", Toast.LENGTH_SHORT).show()
                                 return@Button
                             }
-                            SecuritySettings.setDuressAction(context, DuressAction.WIPE)
-                            confirmWipe.value = false
-                            wipeConfirmText.value = ""
-                            config.value = SecuritySettings.readConfig(context)
-                            Toast.makeText(context, "已启用擦除模式", Toast.LENGTH_SHORT).show()
+                            SecuritySettings.savePins(context, normalPin.value, duressPin.value)
+                            normalPin.value = ""
+                            duressPin.value = ""
+                            Toast.makeText(context, "PIN 已保存", Toast.LENGTH_SHORT).show()
                         },
                         modifier = Modifier.padding(16.dp),
                         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp)
                     ) {
-                        Text("确认启用")
+                        Text("保存 PIN")
+                    }
+                }
+            }
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = cardColors
+            ) {
+                Column(modifier = Modifier.background(MaterialTheme.colorScheme.surfaceVariant)) {
+                    SectionTitle("触发动作")
+                    OptionRow(
+                        title = "伪装模式",
+                        selected = config.value.duressAction == DuressAction.DECOY,
+                        onSelect = {
+                            SecuritySettings.setDuressAction(context, DuressAction.DECOY)
+                            config.value = SecuritySettings.readConfig(context)
+                        }
+                    )
+                    OptionRow(
+                        title = "隐藏模式",
+                        selected = config.value.duressAction == DuressAction.HIDE,
+                        onSelect = {
+                            SecuritySettings.setDuressAction(context, DuressAction.HIDE)
+                            config.value = SecuritySettings.readConfig(context)
+                        }
+                    )
+                    OptionRow(
+                        title = "擦除模式（默认关闭）",
+                        selected = config.value.duressAction == DuressAction.WIPE,
+                        onSelect = {
+                            confirmWipe.value = true
+                        }
+                    )
+                    if (confirmWipe.value) {
+                        Text(
+                            text = "输入 WIPE 以确认启用擦除模式",
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        OutlinedTextField(
+                            value = wipeConfirmText.value,
+                            onValueChange = { wipeConfirmText.value = it },
+                            label = { Text("确认文本") },
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)
+                        )
+                        Button(
+                            onClick = {
+                                if (wipeConfirmText.value.trim() != "WIPE") {
+                                    Toast.makeText(context, "确认文本不正确", Toast.LENGTH_SHORT).show()
+                                    return@Button
+                                }
+                                SecuritySettings.setDuressAction(context, DuressAction.WIPE)
+                                confirmWipe.value = false
+                                wipeConfirmText.value = ""
+                                config.value = SecuritySettings.readConfig(context)
+                                Toast.makeText(context, "已启用擦除模式", Toast.LENGTH_SHORT).show()
+                            },
+                            modifier = Modifier.padding(16.dp),
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp)
+                        ) {
+                            Text("确认启用")
+                        }
                     }
                 }
             }

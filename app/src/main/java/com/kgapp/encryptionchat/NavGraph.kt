@@ -36,10 +36,12 @@ import com.kgapp.encryptionchat.ui.screens.DebugScreen
 import com.kgapp.encryptionchat.ui.screens.DecoyTabs
 import com.kgapp.encryptionchat.ui.screens.GateScreen
 import com.kgapp.encryptionchat.ui.screens.KeyManagementScreen
+import com.kgapp.encryptionchat.ui.screens.MessagePullSettingsScreen
 import com.kgapp.encryptionchat.ui.screens.RecentScreen
 import com.kgapp.encryptionchat.ui.screens.SecuritySettingsScreen
 import com.kgapp.encryptionchat.ui.screens.SettingsScreen
 import com.kgapp.encryptionchat.ui.screens.ThemeSettingsScreen
+import com.kgapp.encryptionchat.ui.screens.TimeDisplaySettingsScreen
 import com.kgapp.encryptionchat.security.SessionState
 import com.kgapp.encryptionchat.security.SessionMode
 import com.kgapp.encryptionchat.security.DuressAction
@@ -55,6 +57,8 @@ sealed class Screen(val route: String) {
     data object AddContact : Screen("add_contact")
     data object KeyManagement : Screen("key_management")
     data object ThemeSettings : Screen("theme_settings")
+    data object TimeDisplaySettings : Screen("time_display_settings")
+    data object MessagePullSettings : Screen("message_pull_settings")
     data object SecuritySettings : Screen("security_settings")
     data object DecoyTabs : Screen("decoy_tabs")
     data object DecoyChat : Screen("decoy/chat/{cid}") {
@@ -105,7 +109,9 @@ fun EncryptionChatApp(repository: ChatRepository, messageSyncManager: MessageSyn
                 onOpenAddContact = { navController.navigate(Screen.AddContact.route) },
                 onOpenKeyManagement = { navController.navigate(Screen.KeyManagement.route) },
                 onOpenThemeSettings = { navController.navigate(Screen.ThemeSettings.route) },
-                onOpenSecurity = { navController.navigate(Screen.SecuritySettings.route) }
+                onOpenSecurity = { navController.navigate(Screen.SecuritySettings.route) },
+                onOpenTimeDisplay = { navController.navigate(Screen.TimeDisplaySettings.route) },
+                onOpenMessagePull = { navController.navigate(Screen.MessagePullSettings.route) }
             )
         }
         composable(Screen.AddContact.route) {
@@ -140,6 +146,27 @@ fun EncryptionChatApp(repository: ChatRepository, messageSyncManager: MessageSyn
                 return@composable
             }
             ThemeSettingsScreen(onBack = { navController.popBackStack() })
+        }
+        composable(Screen.TimeDisplaySettings.route) {
+            if (!unlocked || sessionMode != SessionMode.NORMAL) {
+                navController.navigate(Screen.Gate.route) {
+                    popUpTo(Screen.TimeDisplaySettings.route) { inclusive = true }
+                }
+                return@composable
+            }
+            TimeDisplaySettingsScreen(onBack = { navController.popBackStack() })
+        }
+        composable(Screen.MessagePullSettings.route) {
+            if (!unlocked || sessionMode != SessionMode.NORMAL) {
+                navController.navigate(Screen.Gate.route) {
+                    popUpTo(Screen.MessagePullSettings.route) { inclusive = true }
+                }
+                return@composable
+            }
+            MessagePullSettingsScreen(
+                messageSyncManager = messageSyncManager,
+                onBack = { navController.popBackStack() }
+            )
         }
         composable(Screen.SecuritySettings.route) {
             if (!unlocked || sessionMode != SessionMode.NORMAL) {
@@ -218,7 +245,9 @@ private fun TabScaffold(
     onOpenAddContact: () -> Unit,
     onOpenKeyManagement: () -> Unit,
     onOpenThemeSettings: () -> Unit,
-    onOpenSecurity: () -> Unit
+    onOpenSecurity: () -> Unit,
+    onOpenTimeDisplay: () -> Unit,
+    onOpenMessagePull: () -> Unit
 ) {
     var selectedTab by rememberSaveable { mutableStateOf(Screen.Recent.route) }
     val tabs = listOf(Screen.Recent, Screen.Contacts, Screen.Settings)
@@ -270,10 +299,11 @@ private fun TabScaffold(
                 )
                 Screen.Settings.route -> SettingsScreen(
                     repository = repository,
-                    messageSyncManager = messageSyncManager,
                     onOpenKeyManagement = onOpenKeyManagement,
                     onOpenThemeSettings = onOpenThemeSettings,
-                    onOpenSecurity = onOpenSecurity
+                    onOpenSecurity = onOpenSecurity,
+                    onOpenTimeDisplay = onOpenTimeDisplay,
+                    onOpenMessagePull = onOpenMessagePull
                 )
             }
         }

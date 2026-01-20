@@ -1,11 +1,12 @@
 package com.kgapp.encryptionchat.ui.screens
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Row
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.Card
@@ -26,21 +27,21 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import com.kgapp.encryptionchat.util.ThemeMode
-import com.kgapp.encryptionchat.util.ThemePreferences
+import com.kgapp.encryptionchat.util.TimeDisplayMode
+import com.kgapp.encryptionchat.util.TimeDisplayPreferences
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ThemeSettingsScreen(onBack: () -> Unit) {
+fun TimeDisplaySettingsScreen(onBack: () -> Unit) {
     val context = LocalContext.current
-    val themeMode by ThemePreferences.themeMode.collectAsState()
-
+    val mode by TimeDisplayPreferences.mode.collectAsState()
     val colors = MaterialTheme.colorScheme
+
     Scaffold(
         containerColor = colors.background,
         topBar = {
             TopAppBar(
-                title = { Text("主题设置") },
+                title = { Text("消息时间显示") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Back")
@@ -66,20 +67,20 @@ fun ThemeSettingsScreen(onBack: () -> Unit) {
                         .background(colors.surfaceVariant)
                         .padding(vertical = 4.dp)
                 ) {
-                    ThemeOption(
-                        title = "跟随系统",
-                        selected = themeMode == ThemeMode.SYSTEM,
-                        onSelect = { ThemePreferences.setThemeMode(context, ThemeMode.SYSTEM) }
+                    TimeDisplayOption(
+                        title = "相对时间",
+                        selected = mode == TimeDisplayMode.RELATIVE,
+                        onSelect = { TimeDisplayPreferences.setMode(context, TimeDisplayMode.RELATIVE) }
                     )
-                    ThemeOption(
-                        title = "暗色",
-                        selected = themeMode == ThemeMode.DARK,
-                        onSelect = { ThemePreferences.setThemeMode(context, ThemeMode.DARK) }
+                    TimeDisplayOption(
+                        title = "绝对时间",
+                        selected = mode == TimeDisplayMode.ABSOLUTE,
+                        onSelect = { TimeDisplayPreferences.setMode(context, TimeDisplayMode.ABSOLUTE) }
                     )
-                    ThemeOption(
-                        title = "亮色",
-                        selected = themeMode == ThemeMode.LIGHT,
-                        onSelect = { ThemePreferences.setThemeMode(context, ThemeMode.LIGHT) }
+                    TimeDisplayOption(
+                        title = "自动",
+                        selected = mode == TimeDisplayMode.AUTO,
+                        onSelect = { TimeDisplayPreferences.setMode(context, TimeDisplayMode.AUTO) }
                     )
                 }
             }
@@ -88,12 +89,12 @@ fun ThemeSettingsScreen(onBack: () -> Unit) {
 }
 
 @Composable
-private fun ThemeOption(
+private fun TimeDisplayOption(
     title: String,
     selected: Boolean,
     onSelect: () -> Unit
 ) {
-    androidx.compose.foundation.layout.Row(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onSelect() }
@@ -103,7 +104,8 @@ private fun ThemeOption(
         Text(
             text = title,
             modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.bodyLarge
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurface
         )
         RadioButton(selected = selected, onClick = onSelect)
     }
