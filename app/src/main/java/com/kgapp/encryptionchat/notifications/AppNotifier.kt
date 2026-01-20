@@ -92,7 +92,12 @@ class AppNotifier(private val context: Context) {
             builder.setStyle(style)
             builder.setContentText(preview)
         } else {
-            builder.setContentText("你有新消息")
+            if (locked) {
+                builder.setContentTitle("来自${title}的新消息")
+                builder.setContentText("打开应用查看")
+            } else {
+                builder.setContentText("你有新消息")
+            }
         }
 
         NotificationManagerCompat.from(context).notify(notificationId(fromUid), builder.build())

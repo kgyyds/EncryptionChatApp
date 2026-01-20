@@ -22,7 +22,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import com.kgapp.encryptionchat.data.ChatRepository
-import com.kgapp.encryptionchat.data.api.Api2Client
+import com.kgapp.encryptionchat.data.api.Api4Client
 import com.kgapp.encryptionchat.data.crypto.CryptoManager
 import com.kgapp.encryptionchat.data.sync.MessageSyncManager
 import com.kgapp.encryptionchat.data.sync.MessageSyncRegistry
@@ -47,10 +47,10 @@ class MainActivity : ComponentActivity() {
         NotificationPreferences.initialize(this)
         val storage = FileStorage(this)
         val crypto = CryptoManager(storage)
-        val api = Api2Client(
-    crypto = crypto,
-    baseUrlProvider = { ApiSettingsPreferences.getBaseUrl(this) }
-)
+        val api = Api4Client(
+            crypto = crypto,
+            baseUrlProvider = { ApiSettingsPreferences.getBaseUrl(this) }
+        )
         val repository = ChatRepository(storage, crypto, api)
         val messageSyncManager = MessageSyncManager(repository, applicationContext, api)
         MessageSyncRegistry.bind(messageSyncManager)
