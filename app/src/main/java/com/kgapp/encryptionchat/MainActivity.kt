@@ -56,9 +56,8 @@ class MainActivity : ComponentActivity() {
         MessageSyncRegistry.bind(messageSyncManager)
         if (NotificationPreferences.isBackgroundReceiveEnabled(this)) {
             MessageSyncService.start(this)
-        } else {
-            messageSyncManager.ensureBroadcastSseRunning()
         }
+        messageSyncManager.ensureBroadcastSseRunning()
         setContent {
             val themeMode by ThemePreferences.themeMode.collectAsState()
             val darkTheme = when (themeMode) {
