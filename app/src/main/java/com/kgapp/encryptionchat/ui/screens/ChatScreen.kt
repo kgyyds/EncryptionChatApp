@@ -50,8 +50,6 @@ import com.kgapp.encryptionchat.data.sync.MessageSyncManager
 import com.kgapp.encryptionchat.ui.components.MessageBubble
 import com.kgapp.encryptionchat.ui.viewmodel.ChatViewModel
 import com.kgapp.encryptionchat.ui.viewmodel.RepositoryViewModelFactory
-import com.kgapp.encryptionchat.util.MessagePullPreferences
-import com.kgapp.encryptionchat.util.PullMode
 import com.kgapp.encryptionchat.util.TimeDisplayPreferences
 import com.kgapp.encryptionchat.util.TimeFormatter
 import com.kgapp.encryptionchat.util.UnreadCounter
@@ -70,7 +68,6 @@ fun ChatScreen(
 ) {
     val viewModel: ChatViewModel = viewModel(factory = RepositoryViewModelFactory(repository))
     val state = viewModel.state.collectAsStateWithLifecycle()
-    val pullMode = MessagePullPreferences.mode.collectAsStateWithLifecycle()
     val timeMode = TimeDisplayPreferences.mode.collectAsStateWithLifecycle()
     val inputState = remember { mutableStateOf("") }
     val listState = rememberLazyListState()
@@ -91,12 +88,8 @@ fun ChatScreen(
 
     LaunchedEffect(uid) {
         viewModel.load(uid)
-        messageSyncManager.updateMode(pullMode.value, uid)
+        messageSyncManager.startChatSse(uid)
         UnreadCounter.clear(context, uid)
-    }
-
-    LaunchedEffect(pullMode.value, uid) {
-        messageSyncManager.updateMode(pullMode.value, uid)
     }
 
     LaunchedEffect(uid) {
@@ -108,12 +101,11 @@ fun ChatScreen(
         }
     }
 
-    DisposableEffect(uid, pullMode.value) {
+    DisposableEffect(uid) {
         onDispose {
-            if (pullMode.value == PullMode.CHAT_SSE) {
-                scope.launch { messageSyncManager.stopSse() }
-            } else {
-                messageSyncManager.updateMode(pullMode.value, null)
+            scope.launch {
+                messageSyncManager.stopChatSse()
+                messageSyncManager.startBroadcastSse()
             }
         }
     }
@@ -150,17 +142,15 @@ fun ChatScreen(
                     }
                 },
                 actions = {
-                    if (pullMode.value != PullMode.GLOBAL_SSE) {
-                        IconButton(onClick = {
-                            scope.launch {
-                                val message = messageSyncManager.refreshOnce(uid)
-                                if (!message.isNullOrBlank()) {
-                                    Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
-                                }
+                    IconButton(onClick = {
+                        scope.launch {
+                            val message = messageSyncManager.refreshOnce(uid)
+                            if (!message.isNullOrBlank()) {
+                                Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
                             }
-                        }) {
-                            Icon(imageVector = Icons.Default.Refresh, contentDescription = "Refresh")
                         }
+                    }) {
+                        Icon(imageVector = Icons.Default.Refresh, contentDescription = "Refresh")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(

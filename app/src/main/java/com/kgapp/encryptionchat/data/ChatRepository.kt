@@ -1,7 +1,7 @@
 package com.kgapp.encryptionchat.data
 
 import com.kgapp.encryptionchat.data.api.ApiResult
-import com.kgapp.encryptionchat.data.api.ChatApi
+import com.kgapp.encryptionchat.data.api.Api2Client
 import com.kgapp.encryptionchat.data.crypto.CryptoManager
 import com.kgapp.encryptionchat.data.model.ChatMessage
 import com.kgapp.encryptionchat.data.model.ContactConfig
@@ -17,7 +17,7 @@ import java.util.concurrent.ConcurrentHashMap
 class ChatRepository(
     private val storage: FileStorage,
     private val crypto: CryptoManager,
-    private val api: ChatApi
+    private val api: Api2Client
 ) {
     private val chatLocks = ConcurrentHashMap<String, Mutex>()
 
@@ -51,7 +51,6 @@ class ChatRepository(
     suspend fun importPublicPem(pemText: String): Boolean = withContext(Dispatchers.IO) { crypto.importPublicPem(pemText) }
 
     suspend fun getPemBase64(): String? = withContext(Dispatchers.IO) { crypto.computePemBase64() }
-    suspend fun signNow(): Pair<String, String> = withContext(Dispatchers.IO) { crypto.signNow() }
 
     suspend fun readContacts(): Map<String, ContactConfig> = withContext(Dispatchers.IO) { storage.readContactsConfig() }
     suspend fun getContact(uid: String): ContactConfig? = withContext(Dispatchers.IO) { storage.readContactsConfig()[uid] }
@@ -159,19 +158,13 @@ class ChatRepository(
         val encrypted = crypto.encryptWithPublicPemBase64(contact.public, textTo)
         if (encrypted.isBlank()) return@withContext SendResult(false, null, "加密失败", null)
 
-        val pemB64 = crypto.computePemBase64() ?: return@withContext SendResult(false, null, "本地公钥缺失", null)
-        val (ts, sig) = crypto.signNow()
-
         val payload = mapOf(
-            "ts" to ts,
-            "sig" to sig,
-            "pub" to pemB64,
-            "type" to "1",
+            "type" to 1,
             "recipient" to uid,
             "text" to encrypted
         )
 
-        val respResult = api.postForm(payload)
+        val respResult = api.postJsonEnvelope(payload)
         val resp = when (respResult) {
             is ApiResult.Success -> respResult.value
             is ApiResult.Failure -> return@withContext SendResult(false, null, respResult.message, null)
@@ -194,20 +187,13 @@ class ChatRepository(
             val history = storage.readChatHistory(uid)
             val lastTs = history.keys.mapNotNull { it.toLongOrNull() }.maxOrNull() ?: 0L
 
-            val pemB64 = crypto.computePemBase64()
-                ?: return@withChatLock ReadResult(false, null, "本地公钥缺失", 0, false)
-
-            val (ts, sig) = crypto.signNow()
             val payload = mapOf(
-                "ts" to ts,
-                "sig" to sig,
-                "pub" to pemB64,
-                "type" to "0",
+                "type" to 0,
                 "from" to uid,
-                "last_ts" to lastTs.toString()
+                "last_ts" to lastTs
             )
 
-            val respResult = api.postForm(payload)
+            val respResult = api.postJsonEnvelope(payload)
             val resp = when (respResult) {
                 is ApiResult.Success -> respResult.value
                 is ApiResult.Failure -> return@withChatLock ReadResult(false, null, respResult.message, 0, false)

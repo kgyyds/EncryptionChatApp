@@ -32,8 +32,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kgapp.encryptionchat.data.ChatRepository
 import com.kgapp.encryptionchat.ui.viewmodel.RepositoryViewModelFactory
 import com.kgapp.encryptionchat.ui.viewmodel.SettingsViewModel
-import com.kgapp.encryptionchat.util.MessagePullPreferences
-import com.kgapp.encryptionchat.util.PullMode
 import com.kgapp.encryptionchat.util.TimeDisplayPreferences
 import com.kgapp.encryptionchat.util.TimeDisplayMode
 
@@ -45,11 +43,10 @@ fun SettingsScreen(
     onOpenThemeSettings: () -> Unit,
     onOpenSecurity: () -> Unit,
     onOpenTimeDisplay: () -> Unit,
-    onOpenMessagePull: () -> Unit
+    onOpenApiSettings: () -> Unit
 ) {
     val viewModel: SettingsViewModel = viewModel(factory = RepositoryViewModelFactory(repository))
     val state = viewModel.state.collectAsStateWithLifecycle()
-    val pullMode = MessagePullPreferences.mode.collectAsStateWithLifecycle()
     val timeMode = TimeDisplayPreferences.mode.collectAsStateWithLifecycle()
 
     Scaffold(
@@ -121,13 +118,13 @@ fun SettingsScreen(
                 modifier = Modifier.fillMaxWidth(),
                 colors = cardColors
             ) {
-                SectionTitle("消息拉取")
+                SectionTitle("API 设置")
                 EntryRow(
-                    title = "消息拉取设置",
-                    subtitle = "当前：${pullModeLabel(pullMode.value)}",
+                    title = "服务器地址",
+                    subtitle = "配置 API Base URL",
                     icon = Icons.Outlined.Palette,
                     background = groupBackground,
-                    onClick = onOpenMessagePull
+                    onClick = onOpenApiSettings
                 )
             }
             Spacer(modifier = Modifier.padding(bottom = 8.dp))
@@ -186,10 +183,4 @@ private fun timeModeLabel(mode: TimeDisplayMode): String = when (mode) {
     TimeDisplayMode.RELATIVE -> "相对时间"
     TimeDisplayMode.ABSOLUTE -> "绝对时间"
     TimeDisplayMode.AUTO -> "自动"
-}
-
-private fun pullModeLabel(mode: PullMode): String = when (mode) {
-    PullMode.CHAT_SSE -> "聊天 SSE"
-    PullMode.GLOBAL_SSE -> "全局 SSE"
-    PullMode.MANUAL -> "手动刷新"
 }
