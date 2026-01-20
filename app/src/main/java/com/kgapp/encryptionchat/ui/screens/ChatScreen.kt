@@ -1,32 +1,40 @@
 package com.kgapp.encryptionchat.ui.screens
 
+import android.widget.Toast
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Send
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -35,16 +43,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import android.widget.Toast
 import com.kgapp.encryptionchat.data.ChatRepository
 import com.kgapp.encryptionchat.data.sync.MessageSyncManager
 import com.kgapp.encryptionchat.ui.components.MessageBubble
@@ -54,9 +59,6 @@ import com.kgapp.encryptionchat.util.TimeDisplayPreferences
 import com.kgapp.encryptionchat.util.TimeFormatter
 import com.kgapp.encryptionchat.util.UnreadCounter
 import kotlinx.coroutines.launch
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -68,28 +70,30 @@ fun ChatScreen(
 ) {
     val viewModel: ChatViewModel = viewModel(factory = RepositoryViewModelFactory(repository))
     val state = viewModel.state.collectAsStateWithLifecycle()
-    val selfAvatar = remember(state.value.selfName) {
-    state.value.selfName.trim().ifBlank { "我" }
-}
-val otherAvatar = remember(state.value.remark) {
-    state.value.remark.trim().ifBlank { "对" }
-}
     val timeMode = TimeDisplayPreferences.mode.collectAsStateWithLifecycle()
+
     val inputState = remember { mutableStateOf("") }
     val listState = rememberLazyListState()
+
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val showEmptyToast = remember(uid) { mutableStateOf(false) }
     val colors = MaterialTheme.colorScheme
     val clipboardManager = LocalClipboardManager.current
+
+    val showEmptyToast = remember(uid) { mutableStateOf(false) }
     val menuExpanded = remember { mutableStateOf(false) }
     val selectedMessage = remember { mutableStateOf<ChatViewModel.UiMessage?>(null) }
+
+    val selfAvatar = remember(state.value.selfName) {
+        state.value.selfName.trim().ifBlank { "我" }
+    }
+    val otherAvatar = remember(state.value.remark) {
+        state.value.remark.trim().ifBlank { "对" }
+    }
+
+    // reverseLayout = true 时：index 0 在底部
     val isAtBottom = remember {
-        derivedStateOf {
-            val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-            val total = state.value.messages.size
-            total == 0 || lastVisible >= total - 2
-        }
+        derivedStateOf { listState.firstVisibleItemIndex <= 1 }
     }
 
     LaunchedEffect(uid) {
@@ -123,13 +127,15 @@ val otherAvatar = remember(state.value.remark) {
         }
     }
 
+    // 新消息到来且在底部 → 自动滚回底部（reverseLayout = true 用 0）
     LaunchedEffect(state.value.messages.size) {
         if (state.value.messages.isNotEmpty() && isAtBottom.value) {
-            listState.animateScrollToItem(state.value.messages.lastIndex)
+            listState.animateScrollToItem(0)
         }
     }
 
     Scaffold(
+        modifier = Modifier.fillMaxSize(),
         containerColor = colors.background,
         topBar = {
             TopAppBar(
@@ -172,20 +178,24 @@ val otherAvatar = remember(state.value.remark) {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .imePadding()              // ✅ 放到根上
-                .navigationBarsPadding()   // ✅ 放到根上
+                // ✅ 比 imePadding() 更“硬”，对一些 ROM 更稳
+                .windowInsetsPadding(WindowInsets.ime)
+                .navigationBarsPadding()
                 .background(colors.background)
         ) {
             LazyColumn(
                 modifier = Modifier
                     .weight(1f)
-                    .fillMaxWidth()
-                    .background(colors.background),
+                    .fillMaxWidth(),
                 state = listState,
+                reverseLayout = true,
                 contentPadding = PaddingValues(12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(state.value.messages, key = { it.ts + ":" + it.speaker }) { message ->
+                items(
+                    items = state.value.messages,
+                    key = { it.ts + ":" + it.speaker }
+                ) { message ->
                     val timeLabel = TimeFormatter.formatMessageTimestamp(message.ts, timeMode.value)
                     Box {
                         MessageBubble(
@@ -202,6 +212,7 @@ val otherAvatar = remember(state.value.remark) {
                                 menuExpanded.value = true
                             }
                         )
+
                         DropdownMenu(
                             expanded = menuExpanded.value && selectedMessage.value?.ts == message.ts,
                             onDismissRequest = { menuExpanded.value = false }
@@ -218,15 +229,14 @@ val otherAvatar = remember(state.value.remark) {
                                 text = { Text("删除") },
                                 onClick = {
                                     menuExpanded.value = false
-                                    scope.launch {
-                                        viewModel.deleteMessage(message.ts)
-                                    }
+                                    scope.launch { viewModel.deleteMessage(message.ts) }
                                 }
                             )
                         }
                     }
                 }
             }
+
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -251,6 +261,7 @@ val otherAvatar = remember(state.value.remark) {
                         unfocusedPlaceholderColor = colors.onSurfaceVariant
                     )
                 )
+
                 FilledIconButton(
                     onClick = {
                         val text = inputState.value.trim()
