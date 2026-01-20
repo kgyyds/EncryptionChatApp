@@ -1,14 +1,5 @@
 package com.kgapp.encryptionchat.security
 
-enum class AuthMode(val storageValue: Int) {
-    SYSTEM(0),
-    PIN(1);
-
-    companion object {
-        fun fromStorage(value: Int): AuthMode = entries.firstOrNull { it.storageValue == value } ?: SYSTEM
-    }
-}
-
 enum class DuressAction(val storageValue: Int) {
     DECOY(0),
     HIDE(1),
@@ -27,7 +18,6 @@ enum class SessionMode {
 data class SecurityConfig(
     val appLockEnabled: Boolean,
     val duressEnabled: Boolean,
-    val authMode: AuthMode,
     val duressAction: DuressAction,
     val normalPinHash: String?,
     val duressPinHash: String?

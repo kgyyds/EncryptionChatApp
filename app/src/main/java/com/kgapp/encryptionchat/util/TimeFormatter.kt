@@ -17,7 +17,7 @@ object TimeFormatter {
     }
 
     fun formatTimestamp(ts: String, nowEpochSeconds: Long = System.currentTimeMillis() / 1000L): String {
-        return formatMessageTimestamp(ts, TimeDisplayMode.RELATIVE, nowEpochSeconds)
+        return formatRecentTimestamp(ts, nowEpochSeconds)
     }
 
     fun formatMessageTimestamp(

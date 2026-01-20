@@ -68,6 +68,7 @@ fun SettingsScreen(
             )
         }
     ) { padding ->
+        val cardColors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -78,7 +79,7 @@ fun SettingsScreen(
         ) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                colors = cardColors
             ) {
                 SectionTitle("安全")
                 SettingsRow(
@@ -97,7 +98,7 @@ fun SettingsScreen(
             }
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                colors = cardColors
             ) {
                 SectionTitle("外观")
                 SettingsRow(
@@ -106,26 +107,24 @@ fun SettingsScreen(
                     icon = Icons.Outlined.Palette,
                     onClick = onOpenThemeSettings
                 )
-                Divider(color = MaterialTheme.colorScheme.surfaceVariant)
+            }
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = cardColors
+            ) {
+                SectionTitle("消息时间显示")
                 TimeDisplayRow(
-                    title = "消息时间显示",
+                    title = "显示方式",
                     selected = timeMode.value,
                     onSelect = { mode -> TimeDisplayPreferences.setMode(context, mode) }
                 )
             }
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                colors = cardColors
             ) {
                 SectionTitle("消息拉取")
-                PullModeRow(
-                    title = "手动刷新",
-                    selected = pullMode.value == PullMode.MANUAL,
-                    onSelect = {
-                        MessagePullPreferences.setMode(context, PullMode.MANUAL)
-                        messageSyncManager.updateMode(PullMode.MANUAL, null)
-                    }
-                )
+                SubSectionTitle("SSE 设置")
                 PullModeRow(
                     title = "聊天 SSE",
                     selected = pullMode.value == PullMode.CHAT_SSE,
@@ -142,10 +141,20 @@ fun SettingsScreen(
                         messageSyncManager.updateMode(PullMode.GLOBAL_SSE, null)
                     }
                 )
+                Divider(color = MaterialTheme.colorScheme.outlineVariant, modifier = Modifier.padding(horizontal = 16.dp))
+                SubSectionTitle("拉取设置")
+                PullModeRow(
+                    title = "手动刷新",
+                    selected = pullMode.value == PullMode.MANUAL,
+                    onSelect = {
+                        MessagePullPreferences.setMode(context, PullMode.MANUAL)
+                        messageSyncManager.updateMode(PullMode.MANUAL, null)
+                    }
+                )
             }
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                colors = cardColors
             ) {
                 SectionTitle("关于")
                 SettingsRow(
@@ -153,36 +162,6 @@ fun SettingsScreen(
                     subtitle = "开发中",
                     icon = Icons.Outlined.Info,
                     onClick = { Toast.makeText(context, "开发中", Toast.LENGTH_SHORT).show() }
-                )
-            }
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-            ) {
-                SectionTitle("拉取消息模式")
-                PullModeRow(
-                    title = "手动刷新",
-                    selected = pullMode.value == PullMode.MANUAL,
-                    onSelect = {
-                        MessagePullPreferences.setMode(context, PullMode.MANUAL)
-                        messageSyncManager.updateMode(PullMode.MANUAL, null)
-                    }
-                )
-                PullModeRow(
-                    title = "聊天 SSE",
-                    selected = pullMode.value == PullMode.CHAT_SSE,
-                    onSelect = {
-                        MessagePullPreferences.setMode(context, PullMode.CHAT_SSE)
-                        messageSyncManager.updateMode(PullMode.CHAT_SSE, null)
-                    }
-                )
-                PullModeRow(
-                    title = "全局 SSE",
-                    selected = pullMode.value == PullMode.GLOBAL_SSE,
-                    onSelect = {
-                        MessagePullPreferences.setMode(context, PullMode.GLOBAL_SSE)
-                        messageSyncManager.updateMode(PullMode.GLOBAL_SSE, null)
-                    }
                 )
             }
             Spacer(modifier = Modifier.padding(bottom = 8.dp))
@@ -219,6 +198,16 @@ private fun SectionTitle(title: String) {
         text = title,
         modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
         style = MaterialTheme.typography.titleSmall
+    )
+}
+
+@Composable
+private fun SubSectionTitle(title: String) {
+    Text(
+        text = title,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
     )
 }
 

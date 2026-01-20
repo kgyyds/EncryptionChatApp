@@ -1,15 +1,8 @@
 package com.kgapp.encryptionchat.ui.screens
 
-import android.app.Activity
-import android.app.KeyguardManager
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.biometric.BiometricManager
-import androidx.biometric.BiometricPrompt
-import androidx.core.content.ContextCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -35,12 +28,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
-import androidx.fragment.app.FragmentActivity
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.repeatOnLifecycle
-import com.kgapp.encryptionchat.security.AuthMode
 import com.kgapp.encryptionchat.security.DuressAction
 import com.kgapp.encryptionchat.security.SecuritySettings
 import com.kgapp.encryptionchat.security.SessionState
@@ -50,29 +38,11 @@ import kotlinx.coroutines.delay
 @Composable
 fun GateScreen(onUnlocked: () -> Unit) {
     val context = LocalContext.current
-    val activity = context as? FragmentActivity
     val config = remember { mutableStateOf(SecuritySettings.readConfig(context)) }
     val pinInput = remember { mutableStateOf("") }
-    val inFlight = remember { mutableStateOf(false) }
-    val systemAuthState = remember { mutableStateOf(SystemAuthState.Idle) }
-    val systemAuthMessage = remember { mutableStateOf("") }
-    val lifecycleOwner = LocalLifecycleOwner.current
-    val keyguardLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        inFlight.value = false
-        if (result.resultCode == Activity.RESULT_OK) {
-            Log.d(TAG, "Device credential success")
-            SessionState.unlockNormal()
-            onUnlocked()
-        } else {
-            systemAuthState.value = SystemAuthState.Error
-            systemAuthMessage.value = "认证失败，请重试"
-            Log.d(TAG, "Device credential canceled or failed")
-            Toast.makeText(context, "认证失败", Toast.LENGTH_SHORT).show()
-        }
-    }
 
     BackHandler {
-        activity?.finish()
+        (context as? android.app.Activity)?.finish()
     }
 
     LaunchedEffect(config.value.appLockEnabled) {
@@ -80,64 +50,6 @@ fun GateScreen(onUnlocked: () -> Unit) {
             Log.d(TAG, "App lock disabled, unlocking")
             SessionState.unlockNormal()
             onUnlocked()
-        }
-    }
-
-    fun triggerSystemAuth() {
-        if (activity == null || !config.value.appLockEnabled || config.value.authMode != AuthMode.SYSTEM) return
-        if (inFlight.value) return
-        inFlight.value = true
-        systemAuthState.value = SystemAuthState.InProgress
-        systemAuthMessage.value = ""
-        Log.d(TAG, "Trigger system auth")
-        val biometricManager = BiometricManager.from(activity)
-        val authenticators = BiometricManager.Authenticators.BIOMETRIC_STRONG or
-            BiometricManager.Authenticators.DEVICE_CREDENTIAL
-        val canAuth = biometricManager.canAuthenticate(authenticators)
-        if (canAuth == BiometricManager.BIOMETRIC_SUCCESS) {
-            triggerBiometric(
-                activity,
-                authenticators,
-                onSuccess = {
-                    inFlight.value = false
-                    Log.d(TAG, "Biometric success")
-                    SessionState.unlockNormal()
-                    onUnlocked()
-                },
-                onError = { error ->
-                    inFlight.value = false
-                    systemAuthState.value = SystemAuthState.Error
-                    systemAuthMessage.value = "认证失败，请重试"
-                    Log.d(TAG, "Biometric error: $error")
-                    Toast.makeText(context, "认证失败", Toast.LENGTH_SHORT).show()
-                },
-                onFailedAttempt = {
-                    Log.d(TAG, "Biometric failed attempt")
-                }
-            )
-            return
-        }
-        val keyguardManager = context.getSystemService(KeyguardManager::class.java)
-        if (keyguardManager?.isDeviceSecure == true) {
-            val intent = keyguardManager.createConfirmDeviceCredentialIntent("验证身份", "使用锁屏密码解锁")
-            if (intent != null) {
-                Log.d(TAG, "Fallback to device credential")
-                keyguardLauncher.launch(intent)
-                return
-            }
-        }
-        inFlight.value = false
-        systemAuthState.value = SystemAuthState.Unavailable
-        systemAuthMessage.value = "未设置系统锁屏，无法使用系统认证"
-        Log.d(TAG, "System auth unavailable: $canAuth")
-        Toast.makeText(context, "未设置系统锁屏，无法使用系统认证", Toast.LENGTH_SHORT).show()
-    }
-
-    LaunchedEffect(config.value.authMode, config.value.appLockEnabled, activity) {
-        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
-            if (config.value.authMode == AuthMode.SYSTEM && config.value.appLockEnabled && !SessionState.unlocked.value) {
-                triggerSystemAuth()
-            }
         }
     }
 
@@ -157,7 +69,7 @@ fun GateScreen(onUnlocked: () -> Unit) {
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            if (config.value.appLockEnabled && config.value.authMode == AuthMode.PIN) {
+            if (config.value.appLockEnabled) {
                 PinDots(pinInput.value, modifier = Modifier.fillMaxWidth())
                 Spacer(modifier = Modifier.weight(1f))
                 PinKeypad(
@@ -201,68 +113,8 @@ fun GateScreen(onUnlocked: () -> Unit) {
                     }
                 }
             }
-            if (config.value.appLockEnabled && config.value.authMode == AuthMode.SYSTEM) {
-                val statusText = when (systemAuthState.value) {
-                    SystemAuthState.InProgress -> "正在请求系统验证"
-                    SystemAuthState.Error -> "验证失败"
-                    SystemAuthState.Unavailable -> "系统认证不可用"
-                    SystemAuthState.Idle -> "等待系统验证"
-                }
-                Text(
-                    text = statusText,
-                    style = MaterialTheme.typography.titleMedium
-                )
-                if (systemAuthMessage.value.isNotBlank()) {
-                    Text(
-                        text = systemAuthMessage.value,
-                        color = MaterialTheme.colorScheme.error
-                    )
-                }
-                FilledTonalButton(
-                    onClick = { triggerSystemAuth() },
-                    enabled = !inFlight.value
-                ) {
-                    Text(if (inFlight.value) "正在验证…" else "重试系统验证")
-                }
-            }
         }
     }
-}
-
-private fun triggerBiometric(
-    activity: FragmentActivity,
-    authenticators: Int,
-    onSuccess: () -> Unit,
-    onError: (CharSequence) -> Unit,
-    onFailedAttempt: () -> Unit
-) {
-    val executor = ContextCompat.getMainExecutor(activity)
-    val prompt = BiometricPrompt(activity, executor, object : BiometricPrompt.AuthenticationCallback() {
-        override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-            onSuccess()
-        }
-
-        override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-            onError(errString)
-        }
-
-        override fun onAuthenticationFailed() {
-            onFailedAttempt()
-        }
-    })
-    val promptInfo = BiometricPrompt.PromptInfo.Builder()
-        .setTitle("验证身份")
-        .setSubtitle("使用系统认证解锁")
-        .setAllowedAuthenticators(authenticators)
-        .build()
-    prompt.authenticate(promptInfo)
-}
-
-private enum class SystemAuthState {
-    Idle,
-    InProgress,
-    Error,
-    Unavailable
 }
 
 private const val TAG = "GateScreen"
