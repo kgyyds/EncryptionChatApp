@@ -162,8 +162,9 @@ class CryptoManager(private val storage: FileStorage) {
     }
 
     fun canonicalizeDataForSigning(value: Any?): String {
+        val normalized = normalizeForSigning(value)
         val builder = StringBuilder()
-        appendJsonValue(builder, value)
+        appendJsonValue(builder, normalized)
         return builder.toString()
     }
 
@@ -195,6 +196,46 @@ class CryptoManager(private val storage: FileStorage) {
         return java.util.Base64.getDecoder().decode(normalized)
     }
 
+    private fun normalizeForSigning(value: Any?): Any? {
+        return when (value) {
+            null -> null
+            is Map<*, *> -> {
+                val sorted = TreeMap<String, Any?>()
+                value.forEach { (key, entryValue) ->
+                    if (key != null) {
+                        sorted[key.toString()] = normalizeNestedValue(entryValue)
+                    }
+                }
+                sorted.toMap(LinkedHashMap())
+            }
+            is JSONObject -> {
+                val sorted = TreeMap<String, Any?>()
+                val keys = value.keys()
+                while (keys.hasNext()) {
+                    val key = keys.next()
+                    sorted[key] = normalizeNestedValue(value.opt(key))
+                }
+                sorted.toMap(LinkedHashMap())
+            }
+            is Iterable<*> -> value.map { normalizeNestedValue(it) }
+            is Array<*> -> value.map { normalizeNestedValue(it) }
+            is JSONArray -> (0 until value.length()).map { normalizeNestedValue(value.opt(it)) }
+            is String, is Number, is Boolean -> value
+            else -> value.toString()
+        }
+    }
+
+    private fun normalizeNestedValue(value: Any?): Any? {
+        return when (value) {
+            is Map<*, *>,
+            is Iterable<*>,
+            is Array<*>,
+            is JSONObject,
+            is JSONArray -> canonicalizeDataForSigning(value)
+            else -> normalizeForSigning(value)
+        }
+    }
+
     private fun appendJsonValue(builder: StringBuilder, value: Any?) {
         when (value) {
             null -> builder.append("null")
@@ -210,35 +251,18 @@ class CryptoManager(private val storage: FileStorage) {
     }
 
     private fun appendJsonObject(builder: StringBuilder, value: Map<*, *>) {
-        val sorted = TreeMap<String, Any?>()
-        value.forEach { (key, entryValue) ->
-            if (key != null) {
-                sorted[key.toString()] = entryValue
-            }
-        }
         builder.append("{")
-        sorted.entries.forEachIndexed { index, entry ->
+        value.entries.forEachIndexed { index, entry ->
             if (index > 0) builder.append(",")
-            builder.append("\"").append(escapeJsonString(entry.key)).append("\":")
+            builder.append("\"").append(escapeJsonString(entry.key.toString())).append("\":")
             appendJsonValue(builder, entry.value)
         }
         builder.append("}")
     }
 
     private fun appendJsonObject(builder: StringBuilder, value: JSONObject) {
-        val sorted = TreeMap<String, Any?>()
-        val keys = value.keys()
-        while (keys.hasNext()) {
-            val key = keys.next()
-            sorted[key] = value.opt(key)
-        }
-        builder.append("{")
-        sorted.entries.forEachIndexed { index, entry ->
-            if (index > 0) builder.append(",")
-            builder.append("\"").append(escapeJsonString(entry.key)).append("\":")
-            appendJsonValue(builder, entry.value)
-        }
-        builder.append("}")
+        val normalized = normalizeForSigning(value) as Map<*, *>
+        appendJsonObject(builder, normalized)
     }
 
     private fun appendJsonArray(builder: StringBuilder, value: Iterable<*>) {
