@@ -15,12 +15,22 @@ object ProtocolCanonicalizer {
     private fun normalizeArrayOrEmpty(value: Any?): Any {
         return when (value) {
             is Map<*, *> -> normalizeMap(value)
-            is JSONObject -> normalizeMap(value.toMap())
+            is JSONObject -> normalizeMap(jsonObjectToMap(value))
             is Iterable<*> -> normalizeList(value.toList())
             is Array<*> -> normalizeList(value.toList())
             is JSONArray -> normalizeList((0 until value.length()).map { value.opt(it) })
             else -> emptyMap<String, Any?>()
         }
+    }
+
+    private fun jsonObjectToMap(json: JSONObject): Map<String, Any?> {
+        val map = LinkedHashMap<String, Any?>()
+        val keys = json.keys()
+        while (keys.hasNext()) {
+            val key = keys.next()
+            map[key] = json.opt(key)
+        }
+        return map
     }
 
     private fun normalizeMap(map: Map<*, *>): Map<String, Any?> {
