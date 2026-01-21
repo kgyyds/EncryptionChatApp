@@ -3,7 +3,7 @@ package com.kgapp.encryptionchat.data.sync
 import android.content.Context
 import android.util.Log
 import com.kgapp.encryptionchat.data.ChatRepository
-import com.kgapp.encryptionchat.data.api.Api4Client
+import com.kgapp.encryptionchat.sdk.api.ApiClient
 import com.kgapp.encryptionchat.notifications.MessageSyncService
 import com.kgapp.encryptionchat.util.ApiSettingsPreferences
 import com.kgapp.encryptionchat.util.NotificationPreferences
@@ -27,7 +27,7 @@ import java.net.SocketTimeoutException
 class MessageSyncManager(
     private val repository: ChatRepository,
     private val context: Context,
-    private val api: Api4Client
+    private val api: ApiClient
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val mutex = Mutex()
@@ -308,12 +308,10 @@ class MessageSyncManager(
     private suspend fun handleChatSseData(fromUid: String, payload: String) {
         val json = JSONObject(payload)
         val key = json.optString("key", "")
-        val iv = json.optString("iv", "")
-        val tag = json.optString("tag", "")
         val text = json.optString("msg", "")
         val ts = json.optLong("ts", 0L)
         if (text.isBlank() || ts <= 0L) return
-        val result = repository.handleIncomingCipherMessage(fromUid, ts, key, iv, tag, text)
+        val result = repository.handleIncomingCipherMessage(fromUid, ts, key, text)
         if (result.handshakeFailed) {
             repository.appendMessage(fromUid, Instant.now().epochSecond.toString(), 2, "握手密码错误")
         }
@@ -329,13 +327,11 @@ class MessageSyncManager(
         val json = JSONObject(payload)
         val fromUid = json.optString("from", "")
         val key = json.optString("key", "")
-        val iv = json.optString("iv", "")
-        val tag = json.optString("tag", "")
         val text = json.optString("msg", "")
         val ts = json.optLong("ts", 0L)
         Log.d(TAG, "Broadcast SSE parsed from=$fromUid ts=$ts")
         if (fromUid.isBlank() || text.isBlank() || ts <= 0L) return
-        val result = repository.handleIncomingCipherMessage(fromUid, ts, key, iv, tag, text)
+        val result = repository.handleIncomingCipherMessage(fromUid, ts, key, text)
         if (result.handshakeFailed) {
             repository.appendMessage(fromUid, Instant.now().epochSecond.toString(), 2, "握手密码错误")
         }

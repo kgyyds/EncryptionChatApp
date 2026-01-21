@@ -7,7 +7,7 @@ import android.os.IBinder
 import android.util.Log
 import androidx.core.content.ContextCompat
 import com.kgapp.encryptionchat.data.ChatRepository
-import com.kgapp.encryptionchat.data.api.Api4Client
+import com.kgapp.encryptionchat.sdk.api.ApiClient
 import com.kgapp.encryptionchat.data.crypto.CryptoManager
 import com.kgapp.encryptionchat.data.storage.FileStorage
 import com.kgapp.encryptionchat.data.sync.MessageSyncRegistry
@@ -35,7 +35,7 @@ class MessageSyncService : Service() {
     private var broadcastJob: Job? = null
     private var broadcastCall: Call? = null
     private lateinit var repository: ChatRepository
-    private lateinit var api: Api4Client
+    private lateinit var api: ApiClient
     private lateinit var notifier: AppNotifier
 
     override fun onCreate() {
@@ -45,7 +45,7 @@ class MessageSyncService : Service() {
         UnreadCounter.initialize(this)
         val storage = FileStorage(this)
         val crypto = CryptoManager(storage)
-        api = Api4Client(
+        api = ApiClient(
             crypto = crypto,
             baseUrlProvider = { ApiSettingsPreferences.getBaseUrl(this) }
         )
@@ -183,13 +183,11 @@ class MessageSyncService : Service() {
         val json = JSONObject(payload)
         val fromUid = json.optString("from", "")
         val key = json.optString("key", "")
-        val iv = json.optString("iv", "")
-        val tag = json.optString("tag", "")
         val text = json.optString("msg", "")
         val ts = json.optLong("ts", 0L)
         Log.d(TAG, "SSE payload parsed from=$fromUid ts=$ts")
         if (fromUid.isBlank() || text.isBlank() || ts <= 0L) return
-        val result = repository.handleIncomingCipherMessage(fromUid, ts, key, iv, tag, text)
+        val result = repository.handleIncomingCipherMessage(fromUid, ts, key, text)
         if (result.handshakeFailed) {
             repository.appendMessage(fromUid, Instant.now().epochSecond.toString(), 2, "握手密码错误")
         }

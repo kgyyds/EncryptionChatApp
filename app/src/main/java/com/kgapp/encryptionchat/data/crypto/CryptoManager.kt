@@ -14,9 +14,6 @@ import java.security.spec.X509EncodedKeySpec
 import javax.crypto.Cipher
 import javax.crypto.spec.OAEPParameterSpec
 import javax.crypto.spec.PSource
-import org.json.JSONArray
-import org.json.JSONObject
-import java.util.TreeMap
 
 class CryptoManager(private val storage: FileStorage) {
     companion object {
@@ -178,17 +175,6 @@ class CryptoManager(private val storage: FileStorage) {
         }
     }
 
-    fun signNow(): Pair<String, String> {
-        val ts = (System.currentTimeMillis() / 1000L).toString()
-        val privateKey = loadPrivateKey() ?: return ts to ""
-        val signature = Signature.getInstance("SHA256withRSA")
-        signature.initSign(privateKey)
-        signature.update(ts.toByteArray(Charsets.UTF_8))
-        val sigBytes = signature.sign()
-        val sigB64 = java.util.Base64.getEncoder().encodeToString(sigBytes)
-        return ts to sigB64
-    }
-
     fun signDataJson(dataJson: String): String {
         val privateKey = loadPrivateKey() ?: return ""
         val signature = Signature.getInstance("SHA256withRSA")
@@ -196,13 +182,6 @@ class CryptoManager(private val storage: FileStorage) {
         signature.update(dataJson.toByteArray(Charsets.UTF_8))
         val sigBytes = signature.sign()
         return java.util.Base64.getEncoder().encodeToString(sigBytes)
-    }
-
-    fun canonicalizeDataForSigning(value: Any?): String {
-        val normalized = normalizeForSigning(value)
-        val builder = StringBuilder()
-        appendJsonValue(builder, normalized)
-        return builder.toString()
     }
 
     private fun loadPrivateKey(): PrivateKey? {
@@ -233,116 +212,4 @@ class CryptoManager(private val storage: FileStorage) {
         return java.util.Base64.getDecoder().decode(normalized)
     }
 
-    private fun normalizeForSigning(value: Any?): Any? {
-        return when (value) {
-            null -> null
-            is Map<*, *> -> {
-                val sorted = TreeMap<String, Any?>()
-                value.forEach { (key, entryValue) ->
-                    if (key != null) {
-                        sorted[key.toString()] = normalizeNestedValue(entryValue)
-                    }
-                }
-                sorted.toMap(LinkedHashMap())
-            }
-            is JSONObject -> {
-                val sorted = TreeMap<String, Any?>()
-                val keys = value.keys()
-                while (keys.hasNext()) {
-                    val key = keys.next()
-                    sorted[key] = normalizeNestedValue(value.opt(key))
-                }
-                sorted.toMap(LinkedHashMap())
-            }
-            is Iterable<*> -> value.map { normalizeNestedValue(it) }
-            is Array<*> -> value.map { normalizeNestedValue(it) }
-            is JSONArray -> (0 until value.length()).map { normalizeNestedValue(value.opt(it)) }
-            is String, is Number, is Boolean -> value
-            else -> value.toString()
-        }
-    }
-
-    private fun normalizeNestedValue(value: Any?): Any? {
-        return when (value) {
-            is Map<*, *>,
-            is Iterable<*>,
-            is Array<*>,
-            is JSONObject,
-            is JSONArray -> canonicalizeDataForSigning(value)
-            else -> normalizeForSigning(value)
-        }
-    }
-
-    private fun appendJsonValue(builder: StringBuilder, value: Any?) {
-        when (value) {
-            null -> builder.append("null")
-            is String -> builder.append("\"").append(escapeJsonString(value)).append("\"")
-            is Number, is Boolean -> builder.append(value.toString())
-            is Map<*, *> -> appendJsonObject(builder, value)
-            is Iterable<*> -> appendJsonArray(builder, value)
-            is Array<*> -> appendJsonArray(builder, value.asIterable())
-            is JSONObject -> appendJsonObject(builder, value)
-            is JSONArray -> appendJsonArray(builder, value)
-            else -> builder.append("\"").append(escapeJsonString(value.toString())).append("\"")
-        }
-    }
-
-    private fun appendJsonObject(builder: StringBuilder, value: Map<*, *>) {
-        builder.append("{")
-        value.entries.forEachIndexed { index, entry ->
-            if (index > 0) builder.append(",")
-            builder.append("\"").append(escapeJsonString(entry.key.toString())).append("\":")
-            appendJsonValue(builder, entry.value)
-        }
-        builder.append("}")
-    }
-
-    private fun appendJsonObject(builder: StringBuilder, value: JSONObject) {
-        val normalized = normalizeForSigning(value) as Map<*, *>
-        appendJsonObject(builder, normalized)
-    }
-
-    private fun appendJsonArray(builder: StringBuilder, value: Iterable<*>) {
-        builder.append("[")
-        val iterator = value.iterator()
-        var index = 0
-        while (iterator.hasNext()) {
-            if (index > 0) builder.append(",")
-            appendJsonValue(builder, iterator.next())
-            index += 1
-        }
-        builder.append("]")
-    }
-
-    private fun appendJsonArray(builder: StringBuilder, value: JSONArray) {
-        builder.append("[")
-        for (index in 0 until value.length()) {
-            if (index > 0) builder.append(",")
-            appendJsonValue(builder, value.opt(index))
-        }
-        builder.append("]")
-    }
-
-    private fun escapeJsonString(value: String): String {
-        val escaped = StringBuilder(value.length + 16)
-        for (ch in value) {
-            when (ch) {
-                '\\' -> escaped.append("\\\\")
-                '"' -> escaped.append("\\\"")
-                '\b' -> escaped.append("\\b")
-                '\u000C' -> escaped.append("\\f")
-                '\n' -> escaped.append("\\n")
-                '\r' -> escaped.append("\\r")
-                '\t' -> escaped.append("\\t")
-                else -> {
-                    if (ch < ' ') {
-                        escaped.append(String.format("\\u%04x", ch.code))
-                    } else {
-                        escaped.append(ch)
-                    }
-                }
-            }
-        }
-        return escaped.toString()
-    }
 }

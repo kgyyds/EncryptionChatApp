@@ -1,7 +1,7 @@
 package com.kgapp.encryptionchat.data
 
 import com.kgapp.encryptionchat.data.api.ApiResult
-import com.kgapp.encryptionchat.data.api.Api4Client
+import com.kgapp.encryptionchat.sdk.api.ApiClient
 import com.kgapp.encryptionchat.data.crypto.CryptoManager
 import com.kgapp.encryptionchat.data.crypto.HybridCrypto
 import com.kgapp.encryptionchat.data.model.ChatMessage
@@ -18,7 +18,7 @@ import java.util.concurrent.ConcurrentHashMap
 class ChatRepository(
     private val storage: FileStorage,
     private val crypto: CryptoManager,
-    private val api: Api4Client
+    private val api: ApiClient
 ) {
     private val chatLocks = ConcurrentHashMap<String, Mutex>()
     private val hybridCrypto = HybridCrypto(crypto)
@@ -202,8 +202,6 @@ class ChatRepository(
             "recipient" to uid,
             "ts" to ts,
             "key" to encrypted.key,
-            "iv" to encrypted.iv,
-            "tag" to encrypted.tag,
             "msg" to encrypted.msg
         )
 
@@ -254,24 +252,17 @@ class ChatRepository(
                     val msgTs = keys.next()
                     val item = data.optJSONObject(msgTs) ?: continue
                     val key = item.optString("key", "")
-                    val iv = item.optString("iv", "")
-                    val tag = item.optString("tag", "")
                     val cipherText = item.optString("msg", "")
                     if (cipherText.isBlank()) continue
 
-                    val plain = if (key.isNotBlank() && iv.isNotBlank() && tag.isNotBlank()) {
-                        hybridCrypto.decryptIncomingCipher(
-                            fromUid = uid,
-                            toUid = selfUid,
-                            ts = msgTs.toLongOrNull() ?: 0L,
-                            keyBase64 = key,
-                            ivBase64 = iv,
-                            tagBase64 = tag,
-                            msgBase64 = cipherText
-                        )
-                    } else {
-                        crypto.decryptText(cipherText)
-                    } ?: continue
+                    if (key.isBlank()) continue
+                    val plain = hybridCrypto.decryptIncomingCipher(
+                        fromUid = uid,
+                        toUid = selfUid,
+                        ts = msgTs.toLongOrNull() ?: 0L,
+                        keyBase64 = key,
+                        msgBase64 = cipherText
+                    ) ?: continue
                     if (plain == "解密失败") continue
                     val match = Regex("\\[pass=(.*?)\\]").find(plain)
                     val pwd = match?.groupValues?.getOrNull(1) ?: ""
@@ -307,8 +298,6 @@ class ChatRepository(
         uid: String,
         ts: Long,
         key: String,
-        iv: String,
-        tag: String,
         cipherText: String
     ): IncomingResult =
         withContext(Dispatchers.IO) {
@@ -323,19 +312,14 @@ class ChatRepository(
 
                 val password = contact.pass
                 val selfUid = crypto.computeSelfName() ?: return@withChatLock IncomingResult(false, "本地密钥缺失", false)
-                val plain = if (key.isNotBlank() && iv.isNotBlank() && tag.isNotBlank()) {
-                    hybridCrypto.decryptIncomingCipher(
-                        fromUid = uid,
-                        toUid = selfUid,
-                        ts = ts,
-                        keyBase64 = key,
-                        ivBase64 = iv,
-                        tagBase64 = tag,
-                        msgBase64 = cipherText
-                    )
-                } else {
-                    crypto.decryptText(cipherText)
-                }
+                if (key.isBlank()) return@withChatLock IncomingResult(false, "消息解密失败", false)
+                val plain = hybridCrypto.decryptIncomingCipher(
+                    fromUid = uid,
+                    toUid = selfUid,
+                    ts = ts,
+                    keyBase64 = key,
+                    msgBase64 = cipherText
+                )
                 if (plain == null || plain == "解密失败") {
                     return@withChatLock IncomingResult(false, "消息解密失败", false)
                 }
