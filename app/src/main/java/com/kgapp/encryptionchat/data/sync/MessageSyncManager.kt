@@ -89,12 +89,7 @@ class MessageSyncManager(
             activeChatUid = fromUid
             chatJob = scope.launch {
                 val lastTs = repository.getLastTimestamp(fromUid)
-                val payload = mapOf(
-                    "type" to "SseMsg",
-                    "from" to fromUid,
-                    "last_ts" to lastTs
-                )
-                val call = api.openSseStream(payload)
+                val call = api.openSseMsg(from = fromUid, lastTs = lastTs)
                     ?: run {
                         Log.d(TAG, "SSE skipped: missing credentials")
                         return@launch
@@ -226,10 +221,6 @@ class MessageSyncManager(
                     val lastTs = repository.getLastTimestamp(uid)
                     mapOf("uid" to uid, "ts" to lastTs)
                 }
-                val payload = mapOf(
-                    "type" to "SseAllMsg",
-                    "contacts" to contactPayload
-                )
                 val tsSummary = contactPayload.joinToString(limit = 5) { item ->
                     val uid = item["uid"]?.toString().orEmpty()
                     val ts = item["ts"]?.toString().orEmpty()
@@ -240,7 +231,7 @@ class MessageSyncManager(
                     "Broadcast SSE request url=${ApiSettingsPreferences.getBaseUrl(context)} " +
                         "type=SseAllMsg contacts=${contactPayload.size} ts=$tsSummary"
                 )
-                val call = api.openSseStream(payload)
+                val call = api.openSseAllMsg(contactPayload)
                 if (call == null) {
                     Log.d(TAG, "Broadcast SSE skipped: missing credentials")
                     delay(backoffMs)
