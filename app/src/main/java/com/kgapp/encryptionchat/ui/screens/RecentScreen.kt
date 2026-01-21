@@ -204,36 +204,36 @@ private fun SwipeableRecentItem(
         }
     }
 
-    val handleDragEnd: (Float) -> Unit = { velocity ->
-        if (rowWidthPx.floatValue <= 0f) return@let
+    val handleDragEnd: (Float) -> Unit = handleDragEnd@{ velocity ->
+    if (rowWidthPx.floatValue <= 0f) return@handleDragEnd
 
-        val shouldDelete = when {
-            velocity < -velocityThreshold -> true
-            velocity > velocityThreshold -> false
-            else -> offsetX.floatValue <= -openThreshold
-        }
-
-        val shouldPin = when {
-            velocity > velocityThreshold -> true
-            velocity < -velocityThreshold -> false
-            else -> offsetX.floatValue >= openThreshold
-        }
-
-        if (shouldDelete) {
-            scope.launch {
-                animateOffsetTo(-rowWidthPx.floatValue)
-                visible.value = false
-                delay(exitDurationMs.toLong())
-                onHide()
-            }
-        } else if (shouldPin) {
-            onTogglePinned()
-            scope.launch { animateOffsetTo(0f) }
-        } else {
-            scope.launch { animateOffsetTo(0f) }
-        }
+    val shouldDelete = when {
+        velocity < -velocityThreshold -> true
+        velocity > velocityThreshold -> false
+        else -> offsetX.floatValue <= -openThreshold
     }
 
+    val shouldPin = when {
+        velocity > velocityThreshold -> true
+        velocity < -velocityThreshold -> false
+        else -> offsetX.floatValue >= openThreshold
+    }
+
+    if (shouldDelete) {
+        scope.launch {
+            animateOffsetTo(-rowWidthPx.floatValue)
+            visible.value = false
+            delay(exitDurationMs.toLong())
+            onHide()
+        }
+    } else if (shouldPin) {
+        onTogglePinned()
+        scope.launch { animateOffsetTo(0f) }
+    } else {
+        scope.launch { animateOffsetTo(0f) }
+    }
+}
+            
     AnimatedVisibility(
         visible = visible.value,
         exit = shrinkVertically(animationSpec = tween(exitDurationMs)) +
