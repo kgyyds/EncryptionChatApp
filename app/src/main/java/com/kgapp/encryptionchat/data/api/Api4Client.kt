@@ -10,6 +10,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.MediaType.Companion.toMediaType
 import org.json.JSONArray
 import org.json.JSONObject
+import android.util.Log
 import java.net.UnknownServiceException
 import java.util.concurrent.TimeUnit
 
@@ -24,6 +25,7 @@ class Api4Client(
     companion object {
         private const val USER_AGENT = "my-bot/1.0"
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
+        private const val TAG = "Api4Client"
     }
 
     suspend fun postJsonEnvelope(data: Map<String, Any>): ApiResult<JSONObject> = withContext(Dispatchers.IO) {
@@ -61,6 +63,48 @@ class Api4Client(
         return sseClient.newCall(request)
     }
 
+    suspend fun sendMsg(
+        recipient: String,
+        msg: String,
+        key: String,
+        ts: Long
+    ): ApiResult<JSONObject> {
+        val payload = mapOf(
+            "type" to "SendMsg",
+            "recipient" to recipient,
+            "ts" to ts,
+            "msg" to msg,
+            "key" to key
+        )
+        return postJsonEnvelope(payload)
+    }
+
+    suspend fun getMsg(from: String, lastTs: Long): ApiResult<JSONObject> {
+        val payload = mapOf(
+            "type" to "GetMsg",
+            "from" to from,
+            "last_ts" to lastTs
+        )
+        return postJsonEnvelope(payload)
+    }
+
+    fun openSseMsg(from: String, lastTs: Long): Call? {
+        val payload = mapOf(
+            "type" to "SseMsg",
+            "from" to from,
+            "last_ts" to lastTs
+        )
+        return openSseStream(payload)
+    }
+
+    fun openSseAllMsg(contacts: List<Map<String, Any>>): Call? {
+        val payload = mapOf(
+            "type" to "SseAllMsg",
+            "contacts" to contacts
+        )
+        return openSseStream(payload)
+    }
+
     private fun buildSignedEnvelope(data: Map<String, Any>): String? {
         val pub = crypto.computePemBase64() ?: return null
         val payload = data.toMutableMap()
@@ -69,7 +113,8 @@ class Api4Client(
         if (!payload.containsKey("ts")) {
             payload["ts"] = (System.currentTimeMillis() / 1000L)
         }
-        val dataJson = crypto.canonicalizeDataForSigning(payload)
+        val dataJson = crypto.buildCanonicalDataJson(payload)
+        Log.d(TAG, "Canonical dataJson=$dataJson")
         val sig = crypto.signDataJson(dataJson)
         if (sig.isBlank()) return null
         val envelope = JSONObject()
