@@ -65,7 +65,9 @@ class Api4Client(
         val pub = crypto.computePemBase64() ?: return null
         val payload = data.toMutableMap()
 
-        payload["ts"] = (System.currentTimeMillis() / 1000L)
+        if (!payload.containsKey("ts")) {
+            payload["ts"] = (System.currentTimeMillis() / 1000L)
+        }
         val dataJson = crypto.canonicalizeDataForSigning(payload)
         val sig = crypto.signDataJson(dataJson)
         if (sig.isBlank()) return null
@@ -78,13 +80,14 @@ class Api4Client(
 
     private fun resolveApiUrl(): String {
         val base = baseUrlProvider().trim().ifBlank { "" }
-        if (base.endsWith("/api/api4.php")) return base
+        if (base.endsWith("/api/api5.php")) return base
         val normalized = if (base.endsWith("/")) base.dropLast(1) else base
         return when {
-            normalized.endsWith("/api/api2.php") -> normalized.removeSuffix("/api/api2.php") + "/api/api4.php"
-            normalized.endsWith("/api/api3.php") -> normalized.removeSuffix("/api/api3.php") + "/api/api4.php"
-            normalized.contains("/api/") -> normalized.substringBefore("/api/") + "/api/api4.php"
-            else -> "$normalized/api/api4.php"
+            normalized.endsWith("/api/api2.php") -> normalized.removeSuffix("/api/api2.php") + "/api/api5.php"
+            normalized.endsWith("/api/api3.php") -> normalized.removeSuffix("/api/api3.php") + "/api/api5.php"
+            normalized.endsWith("/api/api4.php") -> normalized.removeSuffix("/api/api4.php") + "/api/api5.php"
+            normalized.contains("/api/") -> normalized.substringBefore("/api/") + "/api/api5.php"
+            else -> "$normalized/api/api5.php"
         }
     }
 

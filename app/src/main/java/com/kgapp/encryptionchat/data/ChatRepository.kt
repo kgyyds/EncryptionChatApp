@@ -3,6 +3,7 @@ package com.kgapp.encryptionchat.data
 import com.kgapp.encryptionchat.data.api.ApiResult
 import com.kgapp.encryptionchat.data.api.Api4Client
 import com.kgapp.encryptionchat.data.crypto.CryptoManager
+import com.kgapp.encryptionchat.data.crypto.HybridCrypto
 import com.kgapp.encryptionchat.data.model.ChatMessage
 import com.kgapp.encryptionchat.data.model.ContactConfig
 import com.kgapp.encryptionchat.data.storage.FileStorage
@@ -20,6 +21,7 @@ class ChatRepository(
     private val api: Api4Client
 ) {
     private val chatLocks = ConcurrentHashMap<String, Mutex>()
+    private val hybridCrypto = HybridCrypto(crypto)
 
     data class SendResult(
         val success: Boolean,
@@ -183,15 +185,26 @@ class ChatRepository(
             storage.writeContactsConfig(config)
         }
 
+        val selfUid = crypto.computeSelfName() ?: return@withContext SendResult(false, null, "本地密钥缺失", null)
         val password = contact.pass
         val textTo = "[pass=$password]$text"
-        val encrypted = crypto.encryptWithPublicPemBase64(contact.public, textTo)
-        if (encrypted.isBlank()) return@withContext SendResult(false, null, "加密失败", null)
+        val ts = Instant.now().epochSecond
+        val encrypted = hybridCrypto.encryptOutgoingPlaintext(
+            fromUid = selfUid,
+            toUid = uid,
+            ts = ts,
+            peerPublicPemBase64 = contact.public,
+            plaintext = textTo
+        ) ?: return@withContext SendResult(false, null, "加密失败", null)
 
         val payload = mapOf(
             "type" to "SendMsg",
             "recipient" to uid,
-            "msg" to encrypted
+            "ts" to ts,
+            "key" to encrypted.key,
+            "iv" to encrypted.iv,
+            "tag" to encrypted.tag,
+            "msg" to encrypted.msg
         )
 
         val respResult = api.postJsonEnvelope(payload)
@@ -214,6 +227,7 @@ class ChatRepository(
             val contact = config[uid] ?: return@withChatLock ReadResult(false, null, "联系人不存在", 0, false)
 
             val password = contact.pass
+            val selfUid = crypto.computeSelfName() ?: return@withChatLock ReadResult(false, null, "本地密钥缺失", 0, false)
             val history = storage.readChatHistory(uid)
             val lastTs = history.keys.mapNotNull { it.toLongOrNull() }.maxOrNull() ?: 0L
 
@@ -239,9 +253,26 @@ class ChatRepository(
                 while (keys.hasNext()) {
                     val msgTs = keys.next()
                     val item = data.optJSONObject(msgTs) ?: continue
+                    val key = item.optString("key", "")
+                    val iv = item.optString("iv", "")
+                    val tag = item.optString("tag", "")
                     val cipherText = item.optString("msg", "")
+                    if (cipherText.isBlank()) continue
 
-                    val plain = crypto.decryptText(cipherText)
+                    val plain = if (key.isNotBlank() && iv.isNotBlank() && tag.isNotBlank()) {
+                        hybridCrypto.decryptIncomingCipher(
+                            fromUid = uid,
+                            toUid = selfUid,
+                            ts = msgTs.toLongOrNull() ?: 0L,
+                            keyBase64 = key,
+                            ivBase64 = iv,
+                            tagBase64 = tag,
+                            msgBase64 = cipherText
+                        )
+                    } else {
+                        crypto.decryptText(cipherText)
+                    } ?: continue
+                    if (plain == "解密失败") continue
                     val match = Regex("\\[pass=(.*?)\\]").find(plain)
                     val pwd = match?.groupValues?.getOrNull(1) ?: ""
                     val cleanText = plain.replaceFirst(Regex("\\[pass=.*?\\]"), "").trimStart()
@@ -272,7 +303,14 @@ class ChatRepository(
     )
 
     // IMPORTANT: keep lock here to avoid concurrent file write (SSE receive + send/read).
-    suspend fun handleIncomingCipherMessage(uid: String, ts: Long, cipherText: String): IncomingResult =
+    suspend fun handleIncomingCipherMessage(
+        uid: String,
+        ts: Long,
+        key: String,
+        iv: String,
+        tag: String,
+        cipherText: String
+    ): IncomingResult =
         withContext(Dispatchers.IO) {
             withChatLock(uid) {
                 val config = storage.readContactsConfig()
@@ -284,7 +322,23 @@ class ChatRepository(
                 }
 
                 val password = contact.pass
-                val plain = crypto.decryptText(cipherText)
+                val selfUid = crypto.computeSelfName() ?: return@withChatLock IncomingResult(false, "本地密钥缺失", false)
+                val plain = if (key.isNotBlank() && iv.isNotBlank() && tag.isNotBlank()) {
+                    hybridCrypto.decryptIncomingCipher(
+                        fromUid = uid,
+                        toUid = selfUid,
+                        ts = ts,
+                        keyBase64 = key,
+                        ivBase64 = iv,
+                        tagBase64 = tag,
+                        msgBase64 = cipherText
+                    )
+                } else {
+                    crypto.decryptText(cipherText)
+                }
+                if (plain == null || plain == "解密失败") {
+                    return@withChatLock IncomingResult(false, "消息解密失败", false)
+                }
 
                 val match = Regex("\\[pass=(.*?)\\]").find(plain)
                 val pwd = match?.groupValues?.getOrNull(1) ?: ""

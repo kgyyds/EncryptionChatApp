@@ -122,6 +122,43 @@ class CryptoManager(private val storage: FileStorage) {
         }
     }
 
+    fun encryptBytesWithPublicPemBase64(pubPemBase64: String, plainBytes: ByteArray): String {
+        return try {
+            val pemBytes = java.util.Base64.getDecoder().decode(pubPemBase64)
+            val publicKey = loadPublicKeyFromPemBytes(pemBytes)
+            val cipher = Cipher.getInstance("RSA/ECB/OAEPWithSHA-256AndMGF1Padding")
+            val spec = OAEPParameterSpec(
+                "SHA-256",
+                "MGF1",
+                MGF1ParameterSpec.SHA256,
+                PSource.PSpecified.DEFAULT
+            )
+            cipher.init(Cipher.ENCRYPT_MODE, publicKey, spec)
+            val encrypted = cipher.doFinal(plainBytes)
+            java.util.Base64.getEncoder().encodeToString(encrypted)
+        } catch (ex: Exception) {
+            ""
+        }
+    }
+
+    fun decryptBytesFromBase64(ciphertextBase64: String): ByteArray? {
+        return try {
+            val privateKey = loadPrivateKey() ?: return null
+            val cipher = Cipher.getInstance("RSA/ECB/OAEPWithSHA-256AndMGF1Padding")
+            val spec = OAEPParameterSpec(
+                "SHA-256",
+                "MGF1",
+                MGF1ParameterSpec.SHA256,
+                PSource.PSpecified.DEFAULT
+            )
+            cipher.init(Cipher.DECRYPT_MODE, privateKey, spec)
+            val cipherBytes = java.util.Base64.getDecoder().decode(ciphertextBase64)
+            cipher.doFinal(cipherBytes)
+        } catch (ex: Exception) {
+            null
+        }
+    }
+
     fun decryptText(ciphertextBase64: String): String {
         return try {
             val privateKey = loadPrivateKey() ?: return "解密失败"
