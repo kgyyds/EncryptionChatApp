@@ -197,15 +197,12 @@ class ChatRepository(
             plaintext = textTo
         ) ?: return@withContext SendResult(false, null, "加密失败", null)
 
-        val payload = mapOf(
-            "type" to "SendMsg",
-            "recipient" to uid,
-            "ts" to ts,
-            "key" to encrypted.key,
-            "msg" to encrypted.msg
+        val respResult = api.sendMsg(
+            recipient = uid,
+            msg = encrypted.msg,
+            key = encrypted.key,
+            ts = ts
         )
-
-        val respResult = api.postJsonEnvelope(payload)
         val resp = when (respResult) {
             is ApiResult.Success -> respResult.value
             is ApiResult.Failure -> return@withContext SendResult(false, null, respResult.message, null)
@@ -229,13 +226,7 @@ class ChatRepository(
             val history = storage.readChatHistory(uid)
             val lastTs = history.keys.mapNotNull { it.toLongOrNull() }.maxOrNull() ?: 0L
 
-            val payload = mapOf(
-                "type" to "GetMsg",
-                "from" to uid,
-                "last_ts" to lastTs
-            )
-
-            val respResult = api.postJsonEnvelope(payload)
+            val respResult = api.getMsg(from = uid, lastTs = lastTs)
             val resp = when (respResult) {
                 is ApiResult.Success -> respResult.value
                 is ApiResult.Failure -> return@withChatLock ReadResult(false, null, respResult.message, 0, false)

@@ -93,10 +93,6 @@ class MessageSyncService : Service() {
                     val lastTs = repository.getLastTimestamp(uid)
                     mapOf("uid" to uid, "ts" to lastTs)
                 }
-                val payload = mapOf(
-                    "type" to "SseAllMsg",
-                    "contacts" to contactPayload
-                )
                 val tsSummary = contactPayload.joinToString(limit = 5) { item ->
                     val uid = item["uid"]?.toString().orEmpty()
                     val ts = item["ts"]?.toString().orEmpty()
@@ -107,7 +103,7 @@ class MessageSyncService : Service() {
                     "Broadcast SSE request url=${ApiSettingsPreferences.getBaseUrl(this@MessageSyncService)} " +
                         "type=SseAllMsg contacts=${contactPayload.size} ts=$tsSummary"
                 )
-                val call = api.openSseStream(payload)
+                val call = api.openSseAllMsg(contactPayload)
                 if (call == null) {
                     Log.d(TAG, "Broadcast SSE skipped: missing credentials")
                     delay(backoffMs)
