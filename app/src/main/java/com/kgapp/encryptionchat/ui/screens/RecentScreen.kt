@@ -245,7 +245,7 @@ private fun SwipeableRecentItem(
                 .padding(vertical = 6.dp)
                 .clip(shape)
 
-                // ✅ 1) 外层只负责“滑动”，且只有确定是横向拖拽才 consume
+                // ✅ 只在确定横向拖拽后 consume，避免抢点击
                 .pointerInput(Unit) {
                     awaitEachGesture {
                         val velocityTracker = VelocityTracker()
@@ -275,7 +275,33 @@ private fun SwipeableRecentItem(
                             if (change.changedToUpIgnoreConsumed()) {
                                 if (dragging) {
                                     val v = velocityTracker.calculateVelocity().x
-                                    handleDragEnd(v)
+                                    // ✅ 修复：这里别 return@let，直接执行即可
+                                    if (rowWidthPx.floatValue > 0f) {
+                                        val shouldDelete = when {
+                                            v < -velocityThreshold -> true
+                                            v > velocityThreshold -> false
+                                            else -> offsetX.floatValue <= -openThreshold
+                                        }
+                                        val shouldPin = when {
+                                            v > velocityThreshold -> true
+                                            v < -velocityThreshold -> false
+                                            else -> offsetX.floatValue >= openThreshold
+                                        }
+
+                                        if (shouldDelete) {
+                                            scope.launch {
+                                                animateOffsetTo(-rowWidthPx.floatValue)
+                                                visible.value = false
+                                                delay(exitDurationMs.toLong())
+                                                onHide()
+                                            }
+                                        } else if (shouldPin) {
+                                            onTogglePinned()
+                                            scope.launch { animateOffsetTo(0f) }
+                                        } else {
+                                            scope.launch { animateOffsetTo(0f) }
+                                        }
+                                    }
                                     change.consume()
                                 }
                                 break
@@ -289,7 +315,6 @@ private fun SwipeableRecentItem(
                                 totalDx += dx
                                 totalDy += dy
 
-                                // ✅ 只有“明确横向滑动”才开始拦截，避免抢点击
                                 if (abs(totalDx) > touchSlop && abs(totalDx) > abs(totalDy)) {
                                     dragging = true
                                     change.consume()
@@ -305,7 +330,7 @@ private fun SwipeableRecentItem(
                     }
                 }
 
-                // ✅ 2) 点击/长按交给标准手势（不会丢点击）
+                // ✅ 点击/长按交给标准手势（稳定）
                 .combinedClickable(
                     onClick = onOpenChat,
                     onLongClick = onOpenMenu
