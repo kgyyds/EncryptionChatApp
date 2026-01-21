@@ -1,7 +1,7 @@
 package com.kgapp.encryptionchat.notifications
 
-import android.app.ServiceInfo
 import android.content.Context
+import android.content.pm.ServiceInfo
 import android.os.Build
 import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
@@ -28,7 +28,7 @@ class BootSyncWorker(
         } else {
             ForegroundInfo(MessageSyncService.SERVICE_NOTIFICATION_ID, notification)
         }
-        setForeground(info)
+        setForegroundAsync(info)
         MessageSyncService.start(applicationContext)
         return Result.success()
     }
