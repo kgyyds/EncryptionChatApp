@@ -49,11 +49,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitLongPressOrCancellation
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.platform.LocalViewConfiguration
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -63,7 +63,8 @@ import com.kgapp.encryptionchat.ui.viewmodel.RecentViewModel
 import com.kgapp.encryptionchat.ui.viewmodel.RepositoryViewModelFactory
 import com.kgapp.encryptionchat.util.UnreadCounter
 import kotlin.math.roundToInt
-import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.AnimationState
+import androidx.compose.animation.core.animateTo
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import kotlinx.coroutines.launch
@@ -188,22 +189,15 @@ private fun SwipeableRecentItem(
     val rowWidthPx = remember { mutableFloatStateOf(0f) }
     val openThreshold = rowWidthPx.floatValue * 0.3f
     val velocityThreshold = with(density) { 900.dp.toPx() }
-    val offsetX = remember { Animatable(0f) }
+    val offsetX = remember { mutableFloatStateOf(0f) }
     val visible = remember { mutableStateOf(true) }
     val exitDurationMs = 220
+    val animateSpec = spring<Float>(dampingRatio = 0.9f, stiffness = 450f)
 
-    val handleDragDelta: (Float) -> Unit = { delta ->
-        val rawNext = offsetX.value + delta
-        val maxOffset = rowWidthPx.floatValue
-        val minOffset = -rowWidthPx.floatValue
-        val adjustedDelta = if (rawNext > maxOffset || rawNext < minOffset) {
-            delta * 0.3f
-        } else {
-            delta
-        }
-        val next = (offsetX.value + adjustedDelta).coerceIn(minOffset, maxOffset)
-        scope.launch {
-            offsetX.snapTo(next)
+    suspend fun animateOffsetTo(target: Float) {
+        val state = AnimationState(offsetX.floatValue)
+        state.animateTo(target, animationSpec = animateSpec) {
+            offsetX.floatValue = value
         }
     }
 
@@ -212,19 +206,16 @@ private fun SwipeableRecentItem(
         val shouldDelete = when {
             velocity < -velocityThreshold -> true
             velocity > velocityThreshold -> false
-            else -> offsetX.value <= -openThreshold
+            else -> offsetX.floatValue <= -openThreshold
         }
         val shouldPin = when {
             velocity > velocityThreshold -> true
             velocity < -velocityThreshold -> false
-            else -> offsetX.value >= openThreshold
+            else -> offsetX.floatValue >= openThreshold
         }
         if (shouldDelete) {
             scope.launch {
-                offsetX.animateTo(
-                    -rowWidthPx.floatValue,
-                    spring(dampingRatio = 0.9f, stiffness = 450f)
-                )
+                animateOffsetTo(-rowWidthPx.floatValue)
                 visible.value = false
                 delay(exitDurationMs.toLong())
                 onHide()
@@ -232,17 +223,11 @@ private fun SwipeableRecentItem(
         } else if (shouldPin) {
             onTogglePinned()
             scope.launch {
-                offsetX.animateTo(
-                    0f,
-                    spring(dampingRatio = 0.9f, stiffness = 450f)
-                )
+                animateOffsetTo(0f)
             }
         } else {
             scope.launch {
-                offsetX.animateTo(
-                    0f,
-                    spring(dampingRatio = 0.9f, stiffness = 450f)
-                )
+                animateOffsetTo(0f)
             }
         }
     }
@@ -264,6 +249,34 @@ private fun SwipeableRecentItem(
                         var totalDx = 0f
                         var totalDy = 0f
                         var dragging = false
+
+                        fun handleDragDelta(delta: Float) {
+                            val rawNext = offsetX.floatValue + delta
+                            val maxOffset = rowWidthPx.floatValue
+                            val minOffset = -rowWidthPx.floatValue
+                            val adjustedDelta = if (rawNext > maxOffset || rawNext < minOffset) {
+                                delta * 0.3f
+                            } else {
+                                delta
+                            }
+                            val next = (offsetX.floatValue + adjustedDelta).coerceIn(minOffset, maxOffset)
+                            offsetX.floatValue = next
+                        }
+
+                        val longPressChange = awaitLongPressOrCancellation(down.id)
+                        if (longPressChange != null) {
+                            onOpenMenu()
+                            longPressChange.consume()
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                if (change.changedToUpIgnoreConsumed()) {
+                                    break
+                                }
+                            }
+                            return@awaitEachGesture
+                        }
+
                         while (true) {
                             val event = awaitPointerEvent()
                             val change = event.changes.firstOrNull { it.id == down.id } ?: break
@@ -271,6 +284,8 @@ private fun SwipeableRecentItem(
                                 if (dragging) {
                                     val velocity = velocityTracker.calculateVelocity().x
                                     handleDragEnd(velocity)
+                                } else {
+                                    onOpenChat()
                                 }
                                 break
                             }
@@ -294,10 +309,6 @@ private fun SwipeableRecentItem(
                         }
                     }
                 }
-                .combinedClickable(
-                    onClick = { onOpenChat() },
-                    onLongClick = { onOpenMenu() }
-                )
                 .then(
                     if (rowWidthPx.floatValue == 0f) {
                         Modifier.onSizeChanged { rowWidthPx.floatValue = it.width.toFloat() }
@@ -307,14 +318,14 @@ private fun SwipeableRecentItem(
                 )
         ) {
             val swipeProgress = if (rowWidthPx.floatValue > 0f) {
-                (abs(offsetX.value) / rowWidthPx.floatValue).coerceIn(0f, 1f)
+                (abs(offsetX.floatValue) / rowWidthPx.floatValue).coerceIn(0f, 1f)
             } else {
                 0f
             }
-            val leftVisible = offsetX.value < 0f
-            val rightVisible = offsetX.value > 0f
-            val leftEmphasis = offsetX.value <= -openThreshold
-            val rightEmphasis = offsetX.value >= openThreshold
+            val leftVisible = offsetX.floatValue < 0f
+            val rightVisible = offsetX.floatValue > 0f
+            val leftEmphasis = offsetX.floatValue <= -openThreshold
+            val rightEmphasis = offsetX.floatValue >= openThreshold
             if (leftVisible) {
                 SwipeBackground(
                     color = Color(0xFFE53935).copy(alpha = swipeProgress),
@@ -331,7 +342,7 @@ private fun SwipeableRecentItem(
 
             Row(
                 modifier = Modifier
-                    .offset { IntOffset(offsetX.value.roundToInt(), 0) }
+                    .offset { IntOffset(offsetX.floatValue.roundToInt(), 0) }
                     .fillMaxWidth()
                     .clip(shape)
                     .background(MaterialTheme.colorScheme.surface)
