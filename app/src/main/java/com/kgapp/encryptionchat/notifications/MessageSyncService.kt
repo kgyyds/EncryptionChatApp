@@ -182,11 +182,14 @@ class MessageSyncService : Service() {
     private suspend fun handleBroadcastSseData(payload: String) {
         val json = JSONObject(payload)
         val fromUid = json.optString("from", "")
+        val key = json.optString("key", "")
+        val iv = json.optString("iv", "")
+        val tag = json.optString("tag", "")
         val text = json.optString("msg", "")
         val ts = json.optLong("ts", 0L)
         Log.d(TAG, "SSE payload parsed from=$fromUid ts=$ts")
         if (fromUid.isBlank() || text.isBlank() || ts <= 0L) return
-        val result = repository.handleIncomingCipherMessage(fromUid, ts, text)
+        val result = repository.handleIncomingCipherMessage(fromUid, ts, key, iv, tag, text)
         if (result.handshakeFailed) {
             repository.appendMessage(fromUid, Instant.now().epochSecond.toString(), 2, "握手密码错误")
         }
