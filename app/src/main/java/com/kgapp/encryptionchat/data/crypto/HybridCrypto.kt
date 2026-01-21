@@ -9,8 +9,6 @@ import javax.crypto.spec.SecretKeySpec
 
 data class HybridPayload(
     val key: String,
-    val iv: String,
-    val tag: String,
     val msg: String
 )
 
@@ -35,12 +33,20 @@ class HybridCrypto(private val crypto: CryptoManager) {
             if (cipherWithTag.size <= TAG_LENGTH_BYTES) return null
             val cipherText = cipherWithTag.copyOfRange(0, cipherWithTag.size - TAG_LENGTH_BYTES)
             val tag = cipherWithTag.copyOfRange(cipherWithTag.size - TAG_LENGTH_BYTES, cipherWithTag.size)
-            val encryptedKey = crypto.encryptBytesWithPublicPemBase64(peerPublicPemBase64, aesKey)
+            val keyBlobJson = org.json.JSONObject().apply {
+                put("alg", KEY_BLOB_ALG)
+                put("ver", KEY_BLOB_VER)
+                put("k", encodeBase64(aesKey))
+                put("iv", encodeBase64(iv))
+                put("tag", encodeBase64(tag))
+            }.toString()
+            val encryptedKey = crypto.encryptBytesWithPublicPemBase64(
+                peerPublicPemBase64,
+                keyBlobJson.toByteArray(Charsets.UTF_8)
+            )
             if (encryptedKey.isBlank()) return null
             HybridPayload(
                 key = encryptedKey,
-                iv = encodeBase64(iv),
-                tag = encodeBase64(tag),
                 msg = encodeBase64(cipherText)
             )
         } catch (ex: Exception) {
@@ -53,15 +59,24 @@ class HybridCrypto(private val crypto: CryptoManager) {
         toUid: String,
         ts: Long,
         keyBase64: String,
-        ivBase64: String,
-        tagBase64: String,
         msgBase64: String
     ): String? {
-        val aesKey = crypto.decryptBytesFromBase64(keyBase64) ?: return null
-        val iv = decodeBase64(ivBase64)
-        val tag = decodeBase64(tagBase64)
+        val keyBlobBytes = crypto.decryptBytesFromBase64(keyBase64) ?: return null
+        val keyBlob = try {
+            org.json.JSONObject(String(keyBlobBytes, Charsets.UTF_8))
+        } catch (ex: Exception) {
+            return null
+        }
+        val alg = keyBlob.optString("alg", "")
+        val ver = keyBlob.optInt("ver", -1)
+        if (alg != KEY_BLOB_ALG || ver != KEY_BLOB_VER) return null
+        val aesKey = decodeBase64(keyBlob.optString("k", ""))
+        val iv = decodeBase64(keyBlob.optString("iv", ""))
+        val tag = decodeBase64(keyBlob.optString("tag", ""))
         val cipherText = decodeBase64(msgBase64)
-        if (iv.size != IV_LENGTH_BYTES || tag.size != TAG_LENGTH_BYTES) return null
+        if (aesKey.size != KEY_LENGTH_BYTES) return null
+        if (iv.size != IV_LENGTH_BYTES && iv.size != ALT_IV_LENGTH_BYTES) return null
+        if (tag.size != TAG_LENGTH_BYTES) return null
         val cipher = Cipher.getInstance(AES_TRANSFORMATION)
         val spec = GCMParameterSpec(TAG_LENGTH_BITS, iv)
         return try {
@@ -92,8 +107,11 @@ class HybridCrypto(private val crypto: CryptoManager) {
     companion object {
         private const val KEY_LENGTH_BYTES = 32
         private const val IV_LENGTH_BYTES = 12
+        private const val ALT_IV_LENGTH_BYTES = 16
         private const val TAG_LENGTH_BYTES = 16
         private const val TAG_LENGTH_BITS = 128
         private const val AES_TRANSFORMATION = "AES/GCM/NoPadding"
+        private const val KEY_BLOB_ALG = "AES-256-GCM"
+        private const val KEY_BLOB_VER = 1
     }
 }
