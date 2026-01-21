@@ -64,7 +64,8 @@ class Api4Client(
     private fun buildSignedEnvelope(data: Map<String, Any>): String? {
         val pub = crypto.computePemBase64() ?: return null
         val payload = data.toMutableMap()
-
+        if (!payload.containsKey("type")) return null
+        payload["pub"] = pub
         if (!payload.containsKey("ts")) {
             payload["ts"] = (System.currentTimeMillis() / 1000L)
         }
@@ -73,7 +74,6 @@ class Api4Client(
         if (sig.isBlank()) return null
         val envelope = JSONObject()
         envelope.put("sig", sig)
-        envelope.put("pub", pub)
         envelope.put("data", toJsonValue(payload))
         return envelope.toString()
     }

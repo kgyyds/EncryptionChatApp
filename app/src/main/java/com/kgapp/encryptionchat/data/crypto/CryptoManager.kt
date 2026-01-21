@@ -240,7 +240,7 @@ class CryptoManager(private val storage: FileStorage) {
                 val sorted = TreeMap<String, Any?>()
                 value.forEach { (key, entryValue) ->
                     if (key != null) {
-                        sorted[key.toString()] = normalizeNestedValue(entryValue)
+                        sorted[key.toString()] = normalizeForSigning(entryValue)
                     }
                 }
                 sorted.toMap(LinkedHashMap())
@@ -250,26 +250,15 @@ class CryptoManager(private val storage: FileStorage) {
                 val keys = value.keys()
                 while (keys.hasNext()) {
                     val key = keys.next()
-                    sorted[key] = normalizeNestedValue(value.opt(key))
+                    sorted[key] = normalizeForSigning(value.opt(key))
                 }
                 sorted.toMap(LinkedHashMap())
             }
-            is Iterable<*> -> value.map { normalizeNestedValue(it) }
-            is Array<*> -> value.map { normalizeNestedValue(it) }
-            is JSONArray -> (0 until value.length()).map { normalizeNestedValue(value.opt(it)) }
+            is Iterable<*> -> value.map { normalizeForSigning(it) }
+            is Array<*> -> value.map { normalizeForSigning(it) }
+            is JSONArray -> (0 until value.length()).map { normalizeForSigning(value.opt(it)) }
             is String, is Number, is Boolean -> value
             else -> value.toString()
-        }
-    }
-
-    private fun normalizeNestedValue(value: Any?): Any? {
-        return when (value) {
-            is Map<*, *>,
-            is Iterable<*>,
-            is Array<*>,
-            is JSONObject,
-            is JSONArray -> canonicalizeDataForSigning(value)
-            else -> normalizeForSigning(value)
         }
     }
 
