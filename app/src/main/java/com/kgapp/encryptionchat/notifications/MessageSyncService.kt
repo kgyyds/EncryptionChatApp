@@ -52,16 +52,17 @@ class MessageSyncService : Service() {
         repository = ChatRepository(storage, crypto, api)
         notifier = AppNotifier(this)
         notifier.ensureChannels()
-        startForeground(NOTIFICATION_ID, notifier.notifyServiceRunning())
-        isRunningFlag.set(true)
-        MessageSyncRegistry.stopAppBroadcast()
-        startBroadcastSse()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (!NotificationPreferences.isBackgroundReceiveEnabled(this)) {
             stopSelf()
             return START_NOT_STICKY
+        }
+        startForeground(SERVICE_NOTIFICATION_ID, notifier.notifyServiceRunning())
+        if (isRunningFlag.compareAndSet(false, true)) {
+            MessageSyncRegistry.stopAppBroadcast()
+            startBroadcastSse()
         }
         return START_STICKY
     }
@@ -212,7 +213,7 @@ class MessageSyncService : Service() {
 
     companion object {
         private const val TAG = "MessageSyncService"
-        private const val NOTIFICATION_ID = 1
+        const val SERVICE_NOTIFICATION_ID = 1
         private const val MAX_BACKOFF_MS = 30000L
         private val isRunningFlag = AtomicBoolean(false)
         val isRunning: Boolean

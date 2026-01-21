@@ -63,10 +63,18 @@ fun NotificationSettingsScreen(onBack: () -> Unit) {
     }
 
     val permissionGranted = remember { mutableStateOf(hasPostNotificationsPermission(context)) }
+    val pendingStartBackground = remember { mutableStateOf(false) }
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
         permissionGranted.value = granted
+        if (granted && pendingStartBackground.value) {
+            pendingStartBackground.value = false
+            if (NotificationPreferences.isBackgroundReceiveEnabled(context)) {
+                MessageSyncService.start(context)
+                MessageSyncRegistry.stopAppBroadcast()
+            }
+        }
     }
 
     Scaffold(
@@ -155,8 +163,16 @@ fun NotificationSettingsScreen(onBack: () -> Unit) {
                                 onCheckedChange = { enabled ->
                                     NotificationPreferences.setEnableBackgroundReceive(context, enabled)
                                     if (enabled) {
-                                        MessageSyncService.start(context)
-                                        MessageSyncRegistry.stopAppBroadcast()
+                                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                                            !permissionGranted.value
+                                        ) {
+                                            NotificationPreferences.setAskedPostNotifications(context, true)
+                                            pendingStartBackground.value = true
+                                            permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                        } else {
+                                            MessageSyncService.start(context)
+                                            MessageSyncRegistry.stopAppBroadcast()
+                                        }
                                     } else {
                                         MessageSyncService.stop(context)
                                         MessageSyncRegistry.ensureAppBroadcast()
