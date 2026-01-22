@@ -84,11 +84,17 @@ class CryptoManager(private val storage: FileStorage) {
         }
     }
 
+    fun normalizePemToBase64(pemText: String): String {
+        val trimmed = pemText.trim()
+        val normalizedLineBreaks = trimmed.replace("\r\n", "\n")
+        val withoutTrailing = normalizedLineBreaks.trimEnd('\n')
+        val canonicalPem = withoutTrailing + "\n"
+        return java.util.Base64.getEncoder().encodeToString(canonicalPem.toByteArray(Charsets.UTF_8))
+    }
+
     fun computePemBase64(): String? {
         val pem = readPublicPemText() ?: return null
-        val normalized = pem.trim()
-        val withLineBreak = normalized + if (normalized.endsWith("\n")) "" else "\n"
-        return java.util.Base64.getEncoder().encodeToString(withLineBreak.toByteArray(Charsets.UTF_8))
+        return normalizePemToBase64(pem)
     }
 
     fun computeSelfName(): String? {
