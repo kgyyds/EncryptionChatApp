@@ -183,6 +183,14 @@ fun ContactsScreen(
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.padding(top = 4.dp)
                             )
+                            if (contact.legacyUid != null) {
+                                Text(
+                                    text = "旧UID已迁移，请重新添加联系人",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.padding(top = 4.dp)
+                                )
+                            }
                         }
                     }
                     DropdownMenu(

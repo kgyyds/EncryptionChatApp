@@ -6,20 +6,24 @@ import org.json.JSONObject
 
 object ProtocolCanonicalizer {
     fun buildCanonicalDataJson(data: Any?): String {
-        val normalized = normalizeArrayOrEmpty(data)
+        val normalized = normalizeStructure(data) ?: return "{}"
         val builder = StringBuilder()
         appendJsonValue(builder, normalized)
         return builder.toString()
     }
 
-    private fun normalizeArrayOrEmpty(value: Any?): Any {
+    fun canonicalStringForSigning(data: Map<String, Any?>): String {
+        return buildCanonicalDataJson(data)
+    }
+
+    private fun normalizeStructure(value: Any?): Any? {
         return when (value) {
             is Map<*, *> -> normalizeMap(value)
             is JSONObject -> normalizeMap(jsonObjectToMap(value))
             is Iterable<*> -> normalizeList(value.toList())
             is Array<*> -> normalizeList(value.toList())
             is JSONArray -> normalizeList((0 until value.length()).map { value.opt(it) })
-            else -> emptyMap<String, Any?>()
+            else -> null
         }
     }
 
@@ -40,11 +44,7 @@ object ProtocolCanonicalizer {
         val normalized = LinkedHashMap<String, Any?>()
         for (entry in sortedEntries) {
             val value = entry.value
-            val normalizedValue = if (isArrayLike(value)) {
-                normalizeArrayToJsonString(value)
-            } else {
-                normalizeScalar(value)
-            }
+            val normalizedValue = if (isArrayLike(value)) normalizeNestedJson(value) else normalizeScalar(value)
             normalized[entry.key.toString()] = normalizedValue
         }
         return normalized
@@ -53,11 +53,7 @@ object ProtocolCanonicalizer {
     private fun normalizeList(list: List<*>): List<Any?> {
         val normalized = ArrayList<Any?>(list.size)
         list.forEach { value ->
-            val normalizedValue = if (isArrayLike(value)) {
-                normalizeArrayToJsonString(value)
-            } else {
-                normalizeScalar(value)
-            }
+            val normalizedValue = if (isArrayLike(value)) normalizeNestedJson(value) else normalizeScalar(value)
             normalized.add(normalizedValue)
         }
         return normalized
@@ -71,8 +67,8 @@ object ProtocolCanonicalizer {
         }
     }
 
-    private fun normalizeArrayToJsonString(value: Any?): String {
-        val normalized = normalizeArrayOrEmpty(value)
+    private fun normalizeNestedJson(value: Any?): String {
+        val normalized = normalizeStructure(value) ?: emptyMap<String, Any?>()
         val builder = StringBuilder()
         appendJsonValue(builder, normalized)
         return builder.toString()

@@ -21,8 +21,8 @@ class ProtocolCanonicalizerTest {
         assertTrue(data["contacts"] is List<*>)
         assertTrue((data["contacts"] as List<*>).all { it is Map<*, *> })
 
-        val canonical1 = ProtocolCanonicalizer.buildCanonicalDataJson(data)
-        val canonical2 = ProtocolCanonicalizer.buildCanonicalDataJson(data)
+        val canonical1 = ProtocolCanonicalizer.canonicalStringForSigning(data)
+        val canonical2 = ProtocolCanonicalizer.canonicalStringForSigning(data)
 
         val expected = """{"contacts":"[\"{\\\"ts\\\":0,\\\"uid\\\":\\\"u1\\\"}\",\"{\\\"ts\\\":5,\\\"uid\\\":\\\"u2\\\"}\"]","pub":"PUB","ts":123,"type":"SseAllMsg"}"""
 

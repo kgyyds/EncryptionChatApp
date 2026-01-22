@@ -29,6 +29,7 @@ import com.kgapp.encryptionchat.data.sync.MessageSyncRegistry
 import com.kgapp.encryptionchat.data.storage.FileStorage
 import com.kgapp.encryptionchat.notifications.MessageSyncService
 import com.kgapp.encryptionchat.util.ApiSettingsPreferences
+import com.kgapp.encryptionchat.util.DebugPreferences
 import com.kgapp.encryptionchat.util.NotificationPreferences
 import com.kgapp.encryptionchat.util.ThemeMode
 import com.kgapp.encryptionchat.util.ThemePreferences
@@ -45,6 +46,7 @@ class MainActivity : ComponentActivity() {
         TimeDisplayPreferences.initialize(this)
         UnreadCounter.initialize(this)
         NotificationPreferences.initialize(this)
+        DebugPreferences.initialize(this)
         val storage = FileStorage(this)
         val crypto = CryptoManager(storage)
         val api = Api4Client(
