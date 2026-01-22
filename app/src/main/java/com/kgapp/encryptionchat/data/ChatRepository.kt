@@ -200,8 +200,7 @@ class ChatRepository(
         val respResult = api.sendMsg(
             recipient = uid,
             msg = encrypted.msg,
-            key = encrypted.key,
-            ts = ts
+            key = encrypted.key
         )
         val resp = when (respResult) {
             is ApiResult.Success -> respResult.value
