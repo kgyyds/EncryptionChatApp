@@ -10,6 +10,7 @@ import com.kgapp.encryptionchat.data.storage.FileStorage
 import com.kgapp.encryptionchat.util.DebugLevel
 import com.kgapp.encryptionchat.util.DebugLog
 import com.kgapp.encryptionchat.util.DebugPreferences
+import com.kgapp.encryptionchat.util.UnreadCounter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -41,6 +42,11 @@ class ChatRepository(
         val handshakeFailed: Boolean
     )
 
+    data class ContactUidCheck(
+        val uid: String,
+        val recomputedUid: String
+    )
+
     suspend fun hasPrivateKey(): Boolean = withContext(Dispatchers.IO) { crypto.hasPrivateKey() }
     suspend fun hasPublicKey(): Boolean = withContext(Dispatchers.IO) { crypto.hasPublicKey() }
     suspend fun hasKeyPair(): Boolean = withContext(Dispatchers.IO) { crypto.hasKeyPair() }
@@ -62,6 +68,17 @@ class ChatRepository(
         storage.readContactsConfig()
     }
     suspend fun getContact(uid: String): ContactConfig? = withContext(Dispatchers.IO) { storage.readContactsConfig()[uid] }
+
+    suspend fun getContactUidChecks(limit: Int): List<ContactUidCheck> = withContext(Dispatchers.IO) {
+        migrateContactsIfNeeded()
+        val config = storage.readContactsConfig()
+        config.entries.take(limit).mapNotNull { (uid, contact) ->
+            val canonicalPubB64 = runCatching { crypto.canonicalizePubBase64(contact.public) }.getOrNull()
+                ?: return@mapNotNull null
+            val recomputed = crypto.computeUidFromPubBase64(canonicalPubB64)
+            ContactUidCheck(uid = uid, recomputedUid = recomputed)
+        }
+    }
 
     suspend fun updateContactRemark(uid: String, remark: String): Boolean =
         withContext(Dispatchers.IO) { storage.updateContactRemark(uid, remark) }
@@ -88,7 +105,7 @@ class ChatRepository(
     suspend fun readContactsRaw(): String = withContext(Dispatchers.IO) { storage.readContactsConfigRaw() }
 
     suspend fun addContact(remark: String, pubKey: String, password: String): String = withContext(Dispatchers.IO) {
-        val pubB64 = crypto.normalizePemToBase64(pubKey)
+        val pubB64 = crypto.pemToCanonicalPubBase64(pubKey)
         val uid = crypto.computeUidFromPubBase64(pubB64)
         val config = storage.readContactsConfig()
         config[uid] = ContactConfig(Remark = remark, public = pubB64, pass = password)
@@ -188,6 +205,7 @@ class ChatRepository(
         text: String,
         onRetry: (suspend (attempt: Int) -> Unit)? = null
     ): SendResult = withContext(Dispatchers.IO) {
+        migrateContactsIfNeeded()
         val config = storage.readContactsConfig()
         val contact = config[uid] ?: return@withContext SendResult(false, null, "联系人不存在", null)
         if (!contact.showInRecent) {
@@ -195,8 +213,29 @@ class ChatRepository(
             storage.writeContactsConfig(config)
         }
 
-        val selfUid = crypto.computeSelfName() ?: return@withContext SendResult(false, null, "本地密钥缺失", null)
-        val password = contact.pass
+        val selfPubB64 = crypto.computePemBase64() ?: return@withContext SendResult(false, null, "本地密钥缺失", null)
+        val selfUid = crypto.computeUidFromPubBase64(selfPubB64)
+        var contactUid = uid
+        var contactConfig = contact
+        val canonicalRecipientPub = crypto.canonicalizePubBase64(contact.public)
+        val recomputedRecipientUid = crypto.computeUidFromPubBase64(canonicalRecipientPub)
+        if (canonicalRecipientPub != contact.public || recomputedRecipientUid != uid) {
+            DebugLog.append(
+                context = storage.appContext,
+                level = DebugLevel.ERROR,
+                tag = "CONTACT",
+                chatUid = uid,
+                eventName = "uid_mismatch",
+                message = "CONTACT_UID_MISMATCH oldUid=$uid recomputedUid=$recomputedRecipientUid"
+            )
+            val repaired = repairContactUid(uid, recomputedRecipientUid, canonicalRecipientPub, contact)
+            if (!repaired) {
+                return@withContext SendResult(false, null, "联系人UID异常", null)
+            }
+            contactUid = recomputedRecipientUid
+            contactConfig = contact.copy(public = canonicalRecipientPub)
+        }
+        val password = contactConfig.pass
         val textTo = "[pass=$password] $text"
         val ts = Instant.now().epochSecond
         val detailed = DebugPreferences.isDetailedLogs(storage.appContext)
@@ -204,13 +243,13 @@ class ChatRepository(
             context = storage.appContext,
             level = DebugLevel.INFO,
             tag = "CRYPTO",
-            chatUid = uid,
+            chatUid = contactUid,
             eventName = "encrypt_outgoing",
-            message = "fromUid=$selfUid toUid=$uid ts=$ts keyBlobVersion=${hybridCrypto.keyBlobVersion} plaintextLen=${textTo.length}",
+            message = "fromUid=$selfUid toUid=$contactUid ts=$ts keyBlobVersion=${hybridCrypto.keyBlobVersion} plaintextLen=${textTo.length}",
             optionalJson = DebugLog.optionalJson(
                 mapOf(
                     "fromUid" to selfUid,
-                    "toUid" to uid,
+                    "toUid" to contactUid,
                     "ts" to ts,
                     "keyBlobVersion" to hybridCrypto.keyBlobVersion,
                     "plaintextLen" to textTo.length
@@ -220,24 +259,27 @@ class ChatRepository(
         )
         val encrypted = hybridCrypto.encryptOutgoingPlaintext(
             fromUid = selfUid,
-            toUid = uid,
+            toUid = contactUid,
             ts = ts,
-            peerPublicPemBase64 = contact.public,
+            peerPublicPemBase64 = contactConfig.public,
             plaintext = textTo
         ) ?: return@withContext SendResult(false, null, "加密失败", null)
-        val pubHashPrefix = crypto.md5Hex(contact.public.toByteArray(Charsets.UTF_8)).take(8)
+        val pubHashPrefix = crypto.md5Hex(contactConfig.public.toByteArray(Charsets.UTF_8)).take(8)
         DebugLog.append(
             context = storage.appContext,
             level = DebugLevel.INFO,
             tag = "SEND",
-            chatUid = uid,
+            chatUid = contactUid,
             eventName = "send_msg",
-            message = "recipientUid=$uid pubB64Len=${contact.public.length} pubMd5Prefix=$pubHashPrefix msgLen=${encrypted.msg.length} keyLen=${encrypted.key.length}"
+            message = "selfPubLen=${selfPubB64.length} selfPubEndsWithNewline=${selfPubB64.endsWith("\n")} " +
+                "selfUid=$selfUid recipientUid=$contactUid recipientPubLen=${contactConfig.public.length} " +
+                "recipientPubEndsWithNewline=${contactConfig.public.endsWith("\n")} recomputedRecipientUid=$recomputedRecipientUid " +
+                "pubMd5Prefix=$pubHashPrefix msgLen=${encrypted.msg.length} keyLen=${encrypted.key.length}"
         )
 
         val resp = retryWithBackoff(maxAttempts = 3, onRetry = onRetry) { attempt ->
             val respResult = api.sendMsg(
-                recipient = uid,
+                recipient = contactUid,
                 msg = encrypted.msg,
                 key = encrypted.key
             )
@@ -489,19 +531,23 @@ class ChatRepository(
     }
 
     private fun migrateContactsIfNeeded() {
+        val prefs = storage.appContext.getSharedPreferences(CONTACT_MIGRATION_PREFS, android.content.Context.MODE_PRIVATE)
+        val currentVersion = prefs.getInt(CONTACT_MIGRATION_KEY, 0)
+        if (currentVersion >= CONTACT_MIGRATION_VERSION) return
         val config = storage.readContactsConfig()
-        if (config.isEmpty()) return
+        if (config.isEmpty()) {
+            prefs.edit().putInt(CONTACT_MIGRATION_KEY, CONTACT_MIGRATION_VERSION).apply()
+            return
+        }
         var changed = false
         val updated = config.toMutableMap()
         val migrations = mutableListOf<Pair<String, String>>()
         config.forEach { (uid, contact) ->
-            val pemText = try {
-                val pemBytes = java.util.Base64.getDecoder().decode(contact.public)
-                String(pemBytes, Charsets.UTF_8)
+            val canonicalPubB64 = try {
+                crypto.canonicalizePubBase64(contact.public)
             } catch (ex: Exception) {
                 return@forEach
             }
-            val canonicalPubB64 = crypto.normalizePemToBase64(pemText)
             val recomputed = crypto.computeUidFromPubBase64(canonicalPubB64)
             if (recomputed == uid) {
                 if (canonicalPubB64 != contact.public) {
@@ -524,8 +570,61 @@ class ChatRepository(
             storage.writeContactsConfig(updated)
             migrations.forEach { (oldUid, newUid) ->
                 storage.ensureChatFile(newUid)
-                storage.renameChatHistory(oldUid, newUid)
+                moveChatHistory(oldUid, newUid)
+                UnreadCounter.migrateUids(storage.appContext, mapOf(oldUid to newUid))
             }
         }
+        prefs.edit().putInt(CONTACT_MIGRATION_KEY, CONTACT_MIGRATION_VERSION).apply()
+    }
+
+    private fun repairContactUid(
+        oldUid: String,
+        newUid: String,
+        canonicalPubB64: String,
+        contact: ContactConfig
+    ): Boolean {
+        val config = storage.readContactsConfig()
+        val existing = config[oldUid] ?: return false
+        if (newUid == oldUid) {
+            if (existing.public != canonicalPubB64) {
+                config[oldUid] = existing.copy(public = canonicalPubB64)
+                storage.writeContactsConfig(config)
+            }
+            return true
+        }
+        if (config.containsKey(newUid)) {
+            val merged = config[newUid]?.copy(public = canonicalPubB64) ?: contact.copy(public = canonicalPubB64)
+            config[newUid] = merged
+            config.remove(oldUid)
+        } else {
+            config.remove(oldUid)
+            config[newUid] = contact.copy(public = canonicalPubB64, legacyUid = oldUid)
+        }
+        storage.writeContactsConfig(config)
+        storage.ensureChatFile(newUid)
+        moveChatHistory(oldUid, newUid)
+        UnreadCounter.migrateUids(storage.appContext, mapOf(oldUid to newUid))
+        return true
+    }
+
+    private fun moveChatHistory(oldUid: String, newUid: String) {
+        val oldFile = storage.chatFile(oldUid)
+        if (!oldFile.exists()) return
+        if (storage.renameChatHistory(oldUid, newUid)) return
+        val oldHistory = storage.readChatHistory(oldUid)
+        val newHistory = storage.readChatHistory(newUid).toMutableMap()
+        oldHistory.forEach { (ts, message) ->
+            if (!newHistory.containsKey(ts)) {
+                newHistory[ts] = message
+            }
+        }
+        storage.writeChatHistory(newUid, newHistory)
+        storage.deleteChatHistory(oldUid)
+    }
+
+    companion object {
+        private const val CONTACT_MIGRATION_PREFS = "contact_migration_prefs"
+        private const val CONTACT_MIGRATION_KEY = "contact_uid_migration_version"
+        private const val CONTACT_MIGRATION_VERSION = 1
     }
 }
