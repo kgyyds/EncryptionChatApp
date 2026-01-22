@@ -321,9 +321,10 @@ class MessageSyncManager(
             tag = "SSE",
             chatUid = fromUid,
             eventName = "payload",
-            message = "len=${payload.length} ts=$ts keyLen=${key.length} msgLen=${text.length}",
+            message = "fromUid=$fromUid len=${payload.length} ts=$ts keyLen=${key.length} msgLen=${text.length}",
             optionalJson = DebugLog.optionalJson(
                 mapOf(
+                    "fromUid" to fromUid,
                     "ts" to ts,
                     "keySummary" to DebugLog.summarizeSensitive(key, detailed),
                     "msgSummary" to DebugLog.summarizeSensitive(text, detailed)

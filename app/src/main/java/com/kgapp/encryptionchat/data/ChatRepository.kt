@@ -88,7 +88,7 @@ class ChatRepository(
     suspend fun readContactsRaw(): String = withContext(Dispatchers.IO) { storage.readContactsConfigRaw() }
 
     suspend fun addContact(remark: String, pubKey: String, password: String): String = withContext(Dispatchers.IO) {
-        val pubB64 = java.util.Base64.getEncoder().encodeToString(pubKey.toByteArray(Charsets.UTF_8))
+        val pubB64 = crypto.normalizePemToBase64(pubKey)
         val uid = crypto.computeUidFromPubBase64(pubB64)
         val config = storage.readContactsConfig()
         config[uid] = ContactConfig(Remark = remark, public = pubB64, pass = password)
@@ -225,6 +225,15 @@ class ChatRepository(
             peerPublicPemBase64 = contact.public,
             plaintext = textTo
         ) ?: return@withContext SendResult(false, null, "加密失败", null)
+        val pubHashPrefix = crypto.md5Hex(contact.public.toByteArray(Charsets.UTF_8)).take(8)
+        DebugLog.append(
+            context = storage.appContext,
+            level = DebugLevel.INFO,
+            tag = "SEND",
+            chatUid = uid,
+            eventName = "send_msg",
+            message = "recipientUid=$uid pubB64Len=${contact.public.length} pubMd5Prefix=$pubHashPrefix msgLen=${encrypted.msg.length} keyLen=${encrypted.key.length}"
+        )
 
         val resp = retryWithBackoff(maxAttempts = 3, onRetry = onRetry) { attempt ->
             val respResult = api.sendMsg(
@@ -486,21 +495,35 @@ class ChatRepository(
         val updated = config.toMutableMap()
         val migrations = mutableListOf<Pair<String, String>>()
         config.forEach { (uid, contact) ->
-            val recomputed = crypto.computeUidFromPubBase64(contact.public)
-            if (recomputed == uid) return@forEach
+            val pemText = try {
+                val pemBytes = java.util.Base64.getDecoder().decode(contact.public)
+                String(pemBytes, Charsets.UTF_8)
+            } catch (ex: Exception) {
+                return@forEach
+            }
+            val canonicalPubB64 = crypto.normalizePemToBase64(pemText)
+            val recomputed = crypto.computeUidFromPubBase64(canonicalPubB64)
+            if (recomputed == uid) {
+                if (canonicalPubB64 != contact.public) {
+                    updated[uid] = contact.copy(public = canonicalPubB64)
+                    changed = true
+                }
+                return@forEach
+            }
             if (!updated.containsKey(recomputed)) {
                 updated.remove(uid)
-                updated[recomputed] = contact.copy(legacyUid = uid)
+                updated[recomputed] = contact.copy(public = canonicalPubB64, legacyUid = uid)
                 migrations.add(uid to recomputed)
                 changed = true
             } else {
-                updated[uid] = contact.copy(legacyUid = uid)
+                updated[uid] = contact.copy(public = canonicalPubB64, legacyUid = uid)
                 changed = true
             }
         }
         if (changed) {
             storage.writeContactsConfig(updated)
             migrations.forEach { (oldUid, newUid) ->
+                storage.ensureChatFile(newUid)
                 storage.renameChatHistory(oldUid, newUid)
             }
         }
