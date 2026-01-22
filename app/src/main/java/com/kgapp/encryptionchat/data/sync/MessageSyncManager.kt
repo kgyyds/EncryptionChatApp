@@ -6,6 +6,9 @@ import com.kgapp.encryptionchat.data.ChatRepository
 import com.kgapp.encryptionchat.data.api.Api4Client
 import com.kgapp.encryptionchat.notifications.MessageSyncService
 import com.kgapp.encryptionchat.util.ApiSettingsPreferences
+import com.kgapp.encryptionchat.util.DebugLevel
+import com.kgapp.encryptionchat.util.DebugLog
+import com.kgapp.encryptionchat.util.DebugPreferences
 import com.kgapp.encryptionchat.util.NotificationPreferences
 import com.kgapp.encryptionchat.util.UnreadCounter
 import kotlinx.coroutines.CoroutineScope
@@ -37,6 +40,8 @@ class MessageSyncManager(
     private var broadcastJob: Job? = null
     private var broadcastCall: Call? = null
     private var activeChatUid: String? = null
+    private var lastChatEventAt: Long? = null
+    private var lastBroadcastEventAt: Long? = null
 
     val updates: SharedFlow<String> = MessageUpdateBus.updates
 
@@ -188,6 +193,12 @@ class MessageSyncManager(
         }
     }
 
+    fun isChatSseActive(uid: String): Boolean = chatFromUid == uid && chatJob?.isActive == true
+
+    fun lastChatEventTime(uid: String): Long? = if (chatFromUid == uid) lastChatEventAt else null
+
+    fun lastBroadcastEventTime(): Long? = lastBroadcastEventAt
+
     private suspend fun stopChatSseLocked() {
         chatCall?.cancel()
         chatCall = null
@@ -302,13 +313,31 @@ class MessageSyncManager(
         val key = json.optString("key", "")
         val text = json.optString("msg", "")
         val ts = json.optLong("ts", 0L)
+        lastChatEventAt = System.currentTimeMillis()
+        val detailed = DebugPreferences.isDetailedLogs(context)
+        DebugLog.append(
+            context = context,
+            level = DebugLevel.INFO,
+            tag = "SSE",
+            chatUid = fromUid,
+            eventName = "payload",
+            message = "len=${payload.length} ts=$ts keyLen=${key.length} msgLen=${text.length}",
+            optionalJson = DebugLog.optionalJson(
+                mapOf(
+                    "ts" to ts,
+                    "keySummary" to DebugLog.summarizeSensitive(key, detailed),
+                    "msgSummary" to DebugLog.summarizeSensitive(text, detailed)
+                ),
+                detailed
+            )
+        )
         if (text.isBlank() || ts <= 0L) return
         val result = repository.handleIncomingCipherMessage(fromUid, ts, key, text)
         if (result.handshakeFailed) {
             repository.appendMessage(fromUid, Instant.now().epochSecond.toString(), 2, "握手密码错误")
         }
         if (result.success) {
-            MessageUpdateBus.emit(fromUid)
+            MessageUpdateBus.emit(fromUid, context)
             if (activeChatUid != fromUid) {
                 UnreadCounter.increment(context, fromUid)
             }
@@ -321,6 +350,25 @@ class MessageSyncManager(
         val key = json.optString("key", "")
         val text = json.optString("msg", "")
         val ts = json.optLong("ts", 0L)
+        lastBroadcastEventAt = System.currentTimeMillis()
+        val detailed = DebugPreferences.isDetailedLogs(context)
+        DebugLog.append(
+            context = context,
+            level = DebugLevel.INFO,
+            tag = "SSE",
+            chatUid = fromUid,
+            eventName = "payload",
+            message = "len=${payload.length} from=$fromUid ts=$ts keyLen=${key.length} msgLen=${text.length}",
+            optionalJson = DebugLog.optionalJson(
+                mapOf(
+                    "from" to fromUid,
+                    "ts" to ts,
+                    "keySummary" to DebugLog.summarizeSensitive(key, detailed),
+                    "msgSummary" to DebugLog.summarizeSensitive(text, detailed)
+                ),
+                detailed
+            )
+        )
         Log.d(TAG, "Broadcast SSE parsed from=$fromUid ts=$ts")
         if (fromUid.isBlank() || text.isBlank() || ts <= 0L) return
         val result = repository.handleIncomingCipherMessage(fromUid, ts, key, text)
@@ -329,7 +377,7 @@ class MessageSyncManager(
         }
         if (result.success) {
             Log.d(TAG, "Broadcast SSE saved uid=$fromUid ts=$ts")
-            MessageUpdateBus.emit(fromUid)
+            MessageUpdateBus.emit(fromUid, context)
             if (activeChatUid != fromUid) {
                 UnreadCounter.increment(context, fromUid)
             }

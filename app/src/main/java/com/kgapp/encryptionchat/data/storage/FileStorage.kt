@@ -3,12 +3,15 @@ package com.kgapp.encryptionchat.data.storage
 import android.content.Context
 import com.kgapp.encryptionchat.data.model.ChatMessage
 import com.kgapp.encryptionchat.data.model.ContactConfig
+import com.kgapp.encryptionchat.util.DebugLevel
+import com.kgapp.encryptionchat.util.DebugLog
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.io.File
 
 @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
 class FileStorage(private val context: Context) {
+    val appContext: Context get() = context
     private val jsonPretty2 = Json {
         prettyPrint = true
         prettyPrintIndent = "  "
@@ -130,15 +133,33 @@ class FileStorage(private val context: Context) {
 
     fun writeChatHistory(uid: String, history: Map<String, ChatMessage>) {
         val file = chatFile(uid)
+        val beforeSize = if (file.exists()) readChatHistory(uid).size else 0
         file.parentFile?.mkdirs()
         val content = jsonPretty2.encodeToString(history)
         file.writeText(content, Charsets.UTF_8)
+        DebugLog.append(
+            context = appContext,
+            level = DebugLevel.INFO,
+            tag = "STORE",
+            chatUid = uid,
+            eventName = "write_history",
+            message = "before=$beforeSize after=${history.size}"
+        )
     }
 
     fun upsertChatMessage(uid: String, ts: String, message: ChatMessage) {
         val history = readChatHistory(uid)
+        val existed = history.containsKey(ts)
         history[ts] = message
         writeChatHistory(uid, history)
+        DebugLog.append(
+            context = appContext,
+            level = DebugLevel.INFO,
+            tag = "STORE",
+            chatUid = uid,
+            eventName = "upsert",
+            message = "ts=$ts existed=$existed size=${history.size}"
+        )
     }
 
     fun replaceChatTimestamp(uid: String, oldTs: String, newTs: String, message: ChatMessage) {
@@ -146,6 +167,14 @@ class FileStorage(private val context: Context) {
         history.remove(oldTs)
         history[newTs] = message
         writeChatHistory(uid, history)
+        DebugLog.append(
+            context = appContext,
+            level = DebugLevel.INFO,
+            tag = "STORE",
+            chatUid = uid,
+            eventName = "replace_ts",
+            message = "old=$oldTs new=$newTs size=${history.size}"
+        )
     }
 
     fun readPublicPemText(): String? {

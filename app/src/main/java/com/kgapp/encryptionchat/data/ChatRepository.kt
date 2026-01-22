@@ -7,6 +7,9 @@ import com.kgapp.encryptionchat.data.crypto.HybridCrypto
 import com.kgapp.encryptionchat.data.model.ChatMessage
 import com.kgapp.encryptionchat.data.model.ContactConfig
 import com.kgapp.encryptionchat.data.storage.FileStorage
+import com.kgapp.encryptionchat.util.DebugLevel
+import com.kgapp.encryptionchat.util.DebugLog
+import com.kgapp.encryptionchat.util.DebugPreferences
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -306,11 +309,35 @@ class ChatRepository(
     ): IncomingResult =
         withContext(Dispatchers.IO) {
             withChatLock(uid) {
+                val detailed = DebugPreferences.isDetailedLogs(storage.appContext)
+                DebugLog.append(
+                    context = storage.appContext,
+                    level = DebugLevel.INFO,
+                    tag = "CRYPTO",
+                    chatUid = uid,
+                    eventName = "incoming",
+                    message = "ts=$ts keyLen=${key.length} msgLen=${cipherText.length}",
+                    optionalJson = DebugLog.optionalJson(
+                        mapOf(
+                            "keySummary" to DebugLog.summarizeSensitive(key, detailed),
+                            "msgSummary" to DebugLog.summarizeSensitive(cipherText, detailed)
+                        ),
+                        detailed
+                    )
+                )
                 val config = storage.readContactsConfig()
                 val contact = config[uid] ?: return@withChatLock IncomingResult(false, "联系人不存在", false)
 
                 val history = storage.readChatHistory(uid)
                 if (history.containsKey(ts.toString())) {
+                    DebugLog.append(
+                        context = storage.appContext,
+                        level = DebugLevel.WARN,
+                        tag = "STORE",
+                        chatUid = uid,
+                        eventName = "duplicate",
+                        message = "ts=$ts"
+                    )
                     return@withChatLock IncomingResult(false, "消息已存在", false)
                 }
 
@@ -325,6 +352,14 @@ class ChatRepository(
                     msgBase64 = cipherText
                 )
                 if (plain == null || plain == "解密失败") {
+                    DebugLog.append(
+                        context = storage.appContext,
+                        level = DebugLevel.ERROR,
+                        tag = "CRYPTO",
+                        chatUid = uid,
+                        eventName = "decrypt_failed",
+                        message = "ts=$ts"
+                    )
                     return@withChatLock IncomingResult(false, "消息解密失败", false)
                 }
 
@@ -336,6 +371,14 @@ class ChatRepository(
                 if (ts <= 0L || cleanText.isBlank()) return@withChatLock IncomingResult(false, "消息格式异常", false)
 
                 storage.upsertChatMessage(uid, ts.toString(), ChatMessage(Spokesman = 1, text = cleanText))
+                DebugLog.append(
+                    context = storage.appContext,
+                    level = DebugLevel.INFO,
+                    tag = "STORE",
+                    chatUid = uid,
+                    eventName = "stored",
+                    message = "ts=$ts"
+                )
                 if (!contact.showInRecent) {
                     config[uid] = contact.copy(showInRecent = true)
                     storage.writeContactsConfig(config)
