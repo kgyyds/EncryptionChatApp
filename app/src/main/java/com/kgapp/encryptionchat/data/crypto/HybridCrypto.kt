@@ -12,9 +12,19 @@ data class HybridPayload(
     val msg: String
 )
 
+data class DecryptResult(
+    val plaintext: String?,
+    val keyBlobVersion: Int,
+    val errorReason: String? = null,
+    val throwable: Throwable? = null
+)
+
 class HybridCrypto(private val crypto: CryptoManager) {
     private val secureRandom = SecureRandom()
+    val keyBlobVersion: Int
+        get() = KEY_BLOB_VER
 
+    @Suppress("UNUSED_PARAMETER")
     fun encryptOutgoingPlaintext(
         fromUid: String,
         toUid: String,
@@ -28,7 +38,7 @@ class HybridCrypto(private val crypto: CryptoManager) {
             val cipher = Cipher.getInstance(AES_TRANSFORMATION)
             val spec = GCMParameterSpec(TAG_LENGTH_BITS, iv)
             cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(aesKey, "AES"), spec)
-            cipher.updateAAD(buildAad(fromUid, toUid, ts))
+            cipher.updateAAD(buildAadV2(fromUid, toUid))
             val cipherWithTag = cipher.doFinal(plaintext.toByteArray(Charsets.UTF_8))
             if (cipherWithTag.size <= TAG_LENGTH_BYTES) return null
             val cipherText = cipherWithTag.copyOfRange(0, cipherWithTag.size - TAG_LENGTH_BYTES)
@@ -60,35 +70,60 @@ class HybridCrypto(private val crypto: CryptoManager) {
         ts: Long,
         keyBase64: String,
         msgBase64: String
-    ): String? {
-        val keyBlobBytes = crypto.decryptBytesFromBase64(keyBase64) ?: return null
+    ): DecryptResult {
+        val keyBlobBytes = crypto.decryptBytesFromBase64(keyBase64)
+            ?: return DecryptResult(null, -1, "key_blob_decrypt_failed")
         val keyBlob = try {
             org.json.JSONObject(String(keyBlobBytes, Charsets.UTF_8))
         } catch (ex: Exception) {
-            return null
+            return DecryptResult(null, -1, "key_blob_parse_failed", ex)
         }
         val alg = keyBlob.optString("alg", "")
         val ver = keyBlob.optInt("ver", -1)
-        if (alg != KEY_BLOB_ALG || ver != KEY_BLOB_VER) return null
-        val aesKey = decodeBase64(keyBlob.optString("k", ""))
-        val iv = decodeBase64(keyBlob.optString("iv", ""))
-        val tag = decodeBase64(keyBlob.optString("tag", ""))
-        val cipherText = decodeBase64(msgBase64)
-        if (aesKey.size != KEY_LENGTH_BYTES) return null
-        if (iv.size != IV_LENGTH_BYTES && iv.size != ALT_IV_LENGTH_BYTES) return null
-        if (tag.size != TAG_LENGTH_BYTES) return null
+        if (alg != KEY_BLOB_ALG) return DecryptResult(null, ver, "key_blob_alg_mismatch")
+        if (ver < 1) return DecryptResult(null, ver, "key_blob_version_invalid")
+        val aesKey = try {
+            decodeBase64(keyBlob.optString("k", ""))
+        } catch (ex: Exception) {
+            return DecryptResult(null, ver, "key_blob_key_decode_failed", ex)
+        }
+        val iv = try {
+            decodeBase64(keyBlob.optString("iv", ""))
+        } catch (ex: Exception) {
+            return DecryptResult(null, ver, "key_blob_iv_decode_failed", ex)
+        }
+        val tag = try {
+            decodeBase64(keyBlob.optString("tag", ""))
+        } catch (ex: Exception) {
+            return DecryptResult(null, ver, "key_blob_tag_decode_failed", ex)
+        }
+        val cipherText = try {
+            decodeBase64(msgBase64)
+        } catch (ex: Exception) {
+            return DecryptResult(null, ver, "ciphertext_decode_failed", ex)
+        }
+        if (aesKey.size != KEY_LENGTH_BYTES) return DecryptResult(null, ver, "key_blob_key_size_invalid")
+        if (iv.size != IV_LENGTH_BYTES && iv.size != ALT_IV_LENGTH_BYTES) {
+            return DecryptResult(null, ver, "key_blob_iv_size_invalid")
+        }
+        if (tag.size != TAG_LENGTH_BYTES) return DecryptResult(null, ver, "key_blob_tag_size_invalid")
         val cipher = Cipher.getInstance(AES_TRANSFORMATION)
         val spec = GCMParameterSpec(TAG_LENGTH_BITS, iv)
         return try {
             val combined = cipherText + tag
             cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(aesKey, "AES"), spec)
-            cipher.updateAAD(buildAad(fromUid, toUid, ts))
+            val aad = if (ver == 1) {
+                buildAadV1(fromUid, toUid, ts)
+            } else {
+                buildAadV2(fromUid, toUid)
+            }
+            cipher.updateAAD(aad)
             val plainBytes = cipher.doFinal(combined)
-            String(plainBytes, Charsets.UTF_8)
+            DecryptResult(String(plainBytes, Charsets.UTF_8), ver)
         } catch (ex: AEADBadTagException) {
-            null
+            DecryptResult(null, ver, "aead_bad_tag", ex)
         } catch (ex: Exception) {
-            null
+            DecryptResult(null, ver, "decrypt_exception", ex)
         }
     }
 
@@ -100,8 +135,12 @@ class HybridCrypto(private val crypto: CryptoManager) {
         return Base64.decode(value, Base64.NO_WRAP)
     }
 
-    private fun buildAad(fromUid: String, toUid: String, ts: Long): ByteArray {
+    private fun buildAadV1(fromUid: String, toUid: String, ts: Long): ByteArray {
         return "v1|from=$fromUid|to=$toUid|ts=$ts".toByteArray(Charsets.UTF_8)
+    }
+
+    private fun buildAadV2(fromUid: String, toUid: String): ByteArray {
+        return "TV-AAD|v2|from=$fromUid|to=$toUid".toByteArray(Charsets.UTF_8)
     }
 
     companion object {
@@ -112,6 +151,6 @@ class HybridCrypto(private val crypto: CryptoManager) {
         private const val TAG_LENGTH_BITS = 128
         private const val AES_TRANSFORMATION = "AES/GCM/NoPadding"
         private const val KEY_BLOB_ALG = "AES-256-GCM"
-        private const val KEY_BLOB_VER = 1
+        const val KEY_BLOB_VER = 2
     }
 }
