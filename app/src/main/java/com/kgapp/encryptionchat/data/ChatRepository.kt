@@ -197,8 +197,27 @@ class ChatRepository(
 
         val selfUid = crypto.computeSelfName() ?: return@withContext SendResult(false, null, "本地密钥缺失", null)
         val password = contact.pass
-        val textTo = "[pass=$password]$text"
+        val textTo = "[pass=$password] $text"
         val ts = Instant.now().epochSecond
+        val detailed = DebugPreferences.isDetailedLogs(storage.appContext)
+        DebugLog.append(
+            context = storage.appContext,
+            level = DebugLevel.INFO,
+            tag = "CRYPTO",
+            chatUid = uid,
+            eventName = "encrypt_outgoing",
+            message = "fromUid=$selfUid toUid=$uid ts=$ts keyBlobVersion=${hybridCrypto.keyBlobVersion} plaintextLen=${textTo.length}",
+            optionalJson = DebugLog.optionalJson(
+                mapOf(
+                    "fromUid" to selfUid,
+                    "toUid" to uid,
+                    "ts" to ts,
+                    "keyBlobVersion" to hybridCrypto.keyBlobVersion,
+                    "plaintextLen" to textTo.length
+                ),
+                detailed
+            )
+        )
         val encrypted = hybridCrypto.encryptOutgoingPlaintext(
             fromUid = selfUid,
             toUid = uid,
@@ -263,14 +282,40 @@ class ChatRepository(
                     if (cipherText.isBlank()) continue
 
                     if (key.isBlank()) continue
-                    val plain = hybridCrypto.decryptIncomingCipher(
+                    val decryptResult = hybridCrypto.decryptIncomingCipher(
                         fromUid = uid,
                         toUid = selfUid,
                         ts = msgTs.toLongOrNull() ?: 0L,
                         keyBase64 = key,
                         msgBase64 = cipherText
-                    ) ?: continue
-                    if (plain == "解密失败") continue
+                    )
+                    val plain = decryptResult.plaintext
+                    if (plain == null) {
+                        val detailed = DebugPreferences.isDetailedLogs(storage.appContext)
+                        val error = decryptResult.throwable
+                        val reason = decryptResult.errorReason
+                        DebugLog.append(
+                            context = storage.appContext,
+                            level = DebugLevel.ERROR,
+                            tag = "CRYPTO",
+                            chatUid = uid,
+                            eventName = "decrypt_failed",
+                            message = "fromUid=$uid toUid=$selfUid serverTs=$msgTs keyBlobVersion=${decryptResult.keyBlobVersion} reason=${reason.orEmpty()}",
+                            optionalJson = DebugLog.optionalJson(
+                                mapOf(
+                                    "fromUid" to uid,
+                                    "toUid" to selfUid,
+                                    "serverTs" to msgTs,
+                                    "keyBlobVersion" to decryptResult.keyBlobVersion,
+                                    "reason" to reason,
+                                    "exception" to error?.javaClass?.simpleName,
+                                    "exceptionMessage" to error?.message
+                                ),
+                                detailed
+                            )
+                        )
+                        continue
+                    }
                     val match = Regex("\\[pass=(.*?)\\]").find(plain)
                     val pwd = match?.groupValues?.getOrNull(1) ?: ""
                     val cleanText = plain.replaceFirst(Regex("\\[pass=.*?\\]"), "").trimStart()
@@ -344,21 +389,36 @@ class ChatRepository(
                 val password = contact.pass
                 val selfUid = crypto.computeSelfName() ?: return@withChatLock IncomingResult(false, "本地密钥缺失", false)
                 if (key.isBlank()) return@withChatLock IncomingResult(false, "消息解密失败", false)
-                val plain = hybridCrypto.decryptIncomingCipher(
+                val decryptResult = hybridCrypto.decryptIncomingCipher(
                     fromUid = uid,
                     toUid = selfUid,
                     ts = ts,
                     keyBase64 = key,
                     msgBase64 = cipherText
                 )
+                val plain = decryptResult.plaintext
                 if (plain == null || plain == "解密失败") {
+                    val error = decryptResult.throwable
+                    val reason = decryptResult.errorReason
                     DebugLog.append(
                         context = storage.appContext,
                         level = DebugLevel.ERROR,
                         tag = "CRYPTO",
                         chatUid = uid,
                         eventName = "decrypt_failed",
-                        message = "ts=$ts"
+                        message = "fromUid=$uid toUid=$selfUid serverTs=$ts keyBlobVersion=${decryptResult.keyBlobVersion} reason=${reason.orEmpty()}",
+                        optionalJson = DebugLog.optionalJson(
+                            mapOf(
+                                "fromUid" to uid,
+                                "toUid" to selfUid,
+                                "serverTs" to ts,
+                                "keyBlobVersion" to decryptResult.keyBlobVersion,
+                                "reason" to reason,
+                                "exception" to error?.javaClass?.simpleName,
+                                "exceptionMessage" to error?.message
+                            ),
+                            detailed
+                        )
                     )
                     return@withChatLock IncomingResult(false, "消息解密失败", false)
                 }
