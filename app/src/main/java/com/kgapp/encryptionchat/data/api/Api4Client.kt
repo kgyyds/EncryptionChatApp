@@ -1,6 +1,8 @@
 package com.kgapp.encryptionchat.data.api
 
+import com.kgapp.encryptionchat.BuildConfig
 import com.kgapp.encryptionchat.data.crypto.CryptoManager
+import com.kgapp.encryptionchat.data.crypto.ProtocolCanonicalizer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Call
@@ -12,6 +14,11 @@ import org.json.JSONArray
 import org.json.JSONObject
 import android.util.Log
 import java.net.UnknownServiceException
+import java.time.Instant
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
+import java.time.format.DateTimeParseException
+import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.TimeUnit
 
 class Api4Client(
@@ -28,6 +35,8 @@ class Api4Client(
         private const val TAG = "Api4Client"
     }
 
+    private val serverTimeOffsetSec = AtomicLong(0L)
+
     suspend fun postJsonEnvelope(data: Map<String, Any>): ApiResult<JSONObject> = withContext(Dispatchers.IO) {
         val signed = buildSignedRequest(data)
             ?: return@withContext ApiResult.Failure("本地密钥缺失")
@@ -39,11 +48,14 @@ class Api4Client(
             .build()
         try {
             client.newCall(request).execute().use { response ->
+                updateServerTimeOffsetFromResponseHeader(response.header("Date"))
                 val responseText = response.body?.string()
-                Log.d(
-                    TAG,
-                    "API response code=${response.code} body=${responseText?.take(300)}"
-                )
+                if (BuildConfig.DEBUG) {
+                    Log.d(
+                        TAG,
+                        "API response code=${response.code} body=${responseText?.take(300)}"
+                    )
+                }
                 if (!response.isSuccessful) {
                     return@withContext ApiResult.Failure("网络请求失败: ${response.code}")
                 }
@@ -73,37 +85,43 @@ class Api4Client(
         msg: String,
         key: String
     ): ApiResult<JSONObject> {
-        val payload = mapOf(
-            "type" to "SendMsg",
-            "recipient" to recipient,
-            "msg" to msg,
-            "key" to key
+        val payload = buildDataMap(
+            type = "SendMsg",
+            fields = mapOf(
+                "recipient" to recipient,
+                "msg" to msg,
+                "key" to key
+            )
         )
         return postJsonEnvelope(payload)
     }
 
     suspend fun getMsg(from: String, lastTs: Long): ApiResult<JSONObject> {
-        val payload = mapOf(
-            "type" to "GetMsg",
-            "from" to from,
-            "last_ts" to lastTs
+        val payload = buildDataMap(
+            type = "GetMsg",
+            fields = mapOf(
+                "from" to from,
+                "last_ts" to lastTs
+            )
         )
         return postJsonEnvelope(payload)
     }
 
     fun openSseMsg(from: String, lastTs: Long): Call? {
-        val payload = mapOf(
-            "type" to "SseMsg",
-            "from" to from,
-            "last_ts" to lastTs
+        val payload = buildDataMap(
+            type = "SseMsg",
+            fields = mapOf(
+                "from" to from,
+                "last_ts" to lastTs
+            )
         )
         return openSseStream(payload)
     }
 
     fun openSseAllMsg(contacts: List<Map<String, Any>>): Call? {
-        val payload = mapOf(
-            "type" to "SseAllMsg",
-            "contacts" to contacts
+        val payload = buildDataMap(
+            type = "SseAllMsg",
+            fields = mapOf("contacts" to contacts)
         )
         return openSseStream(payload)
     }
@@ -113,12 +131,18 @@ class Api4Client(
         val payload = data.toMutableMap()
         if (!payload.containsKey("type")) return null
         payload["pub"] = pub
-        payload["ts"] = (System.currentTimeMillis() / 1000L)
-        val dataJson = crypto.buildCanonicalDataJson(payload)
-        Log.d(TAG, "Canonical dataJson=$dataJson")
+        payload["ts"] = currentServerUnixSeconds()
+        val dataJson = ProtocolCanonicalizer.canonicalStringForSigning(payload)
+        val uid = crypto.computeUidFromPubBase64(pub)
+        if (BuildConfig.DEBUG) {
+            Log.d(TAG, "Request type=${payload["type"]} ts=${payload["ts"]} uid=$uid")
+            Log.d(TAG, "Canonical dataJson=${dataJson.take(200)}")
+        }
         val sig = crypto.signDataJson(dataJson)
         if (sig.isBlank()) return null
-        Log.d(TAG, "Signature (base64)=${sig.take(40)}")
+        if (BuildConfig.DEBUG) {
+            Log.d(TAG, "Signature (base64)=${sig.take(40)}")
+        }
         val envelope = JSONObject()
         envelope.put("sig", sig)
         envelope.put("data", toJsonValue(payload))
@@ -127,6 +151,16 @@ class Api4Client(
             dataJson = dataJson,
             signature = sig
         )
+    }
+
+    private fun buildDataMap(type: String, fields: Map<String, Any?>): Map<String, Any> {
+        val payload = mutableMapOf<String, Any>("type" to type)
+        fields.forEach { (key, value) ->
+            if (value != null) {
+                payload[key] = value
+            }
+        }
+        return payload
     }
 
     private fun resolveApiUrl(): String {
@@ -176,4 +210,28 @@ class Api4Client(
         val dataJson: String,
         val signature: String
     )
+
+    private fun currentServerUnixSeconds(): Long {
+        val offset = serverTimeOffsetSec.get()
+        return (System.currentTimeMillis() / 1000L) + offset
+    }
+
+    fun updateServerTimeOffsetFromResponseHeader(dateHeader: String?) {
+        if (dateHeader.isNullOrBlank()) {
+            if (BuildConfig.DEBUG) {
+                Log.d(TAG, "Server Date header missing, using local time")
+            }
+            return
+        }
+        try {
+            val parsed = ZonedDateTime.parse(dateHeader, DateTimeFormatter.RFC_1123_DATE_TIME)
+            val serverEpoch = parsed.toInstant().epochSecond
+            val localEpoch = System.currentTimeMillis() / 1000L
+            serverTimeOffsetSec.set(serverEpoch - localEpoch)
+        } catch (ex: DateTimeParseException) {
+            if (BuildConfig.DEBUG) {
+                Log.d(TAG, "Failed to parse server Date header: $dateHeader")
+            }
+        }
+    }
 }

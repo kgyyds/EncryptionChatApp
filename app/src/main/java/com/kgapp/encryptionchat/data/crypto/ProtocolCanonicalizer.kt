@@ -12,6 +12,10 @@ object ProtocolCanonicalizer {
         return builder.toString()
     }
 
+    fun canonicalStringForSigning(data: Map<String, Any?>): String {
+        return buildCanonicalDataJson(data)
+    }
+
     private fun normalizeStructure(value: Any?): Any? {
         return when (value) {
             is Map<*, *> -> normalizeMap(value)
