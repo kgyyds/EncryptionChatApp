@@ -29,20 +29,25 @@ class Api4Client(
     }
 
     suspend fun postJsonEnvelope(data: Map<String, Any>): ApiResult<JSONObject> = withContext(Dispatchers.IO) {
-        val envelope = buildSignedEnvelope(data)
+        val signed = buildSignedRequest(data)
             ?: return@withContext ApiResult.Failure("本地密钥缺失")
         val request = Request.Builder()
             .url(resolveApiUrl())
-            .post(envelope.toRequestBody(JSON_MEDIA_TYPE))
+            .post(signed.body)
             .header("User-Agent", USER_AGENT)
             .header("Content-Type", "application/json; charset=utf-8")
             .build()
         try {
             client.newCall(request).execute().use { response ->
+                val responseText = response.body?.string()
+                Log.d(
+                    TAG,
+                    "API response code=${response.code} body=${responseText?.take(300)}"
+                )
                 if (!response.isSuccessful) {
                     return@withContext ApiResult.Failure("网络请求失败: ${response.code}")
                 }
-                val text = response.body?.string() ?: return@withContext ApiResult.Failure("网络响应为空")
+                val text = responseText ?: return@withContext ApiResult.Failure("网络响应为空")
                 return@withContext ApiResult.Success(JSONObject(text))
             }
         } catch (ex: UnknownServiceException) {
@@ -53,10 +58,10 @@ class Api4Client(
     }
 
     fun openSseStream(data: Map<String, Any>): Call? {
-        val envelope = buildSignedEnvelope(data) ?: return null
+        val signed = buildSignedRequest(data) ?: return null
         val request = Request.Builder()
             .url(resolveApiUrl())
-            .post(envelope.toRequestBody(JSON_MEDIA_TYPE))
+            .post(signed.body)
             .header("User-Agent", USER_AGENT)
             .header("Content-Type", "application/json; charset=utf-8")
             .build()
@@ -66,13 +71,11 @@ class Api4Client(
     suspend fun sendMsg(
         recipient: String,
         msg: String,
-        key: String,
-        ts: Long
+        key: String
     ): ApiResult<JSONObject> {
         val payload = mapOf(
             "type" to "SendMsg",
             "recipient" to recipient,
-            "ts" to ts,
             "msg" to msg,
             "key" to key
         )
@@ -105,22 +108,25 @@ class Api4Client(
         return openSseStream(payload)
     }
 
-    private fun buildSignedEnvelope(data: Map<String, Any>): String? {
+    private fun buildSignedRequest(data: Map<String, Any>): SignedRequest? {
         val pub = crypto.computePemBase64() ?: return null
         val payload = data.toMutableMap()
         if (!payload.containsKey("type")) return null
         payload["pub"] = pub
-        if (!payload.containsKey("ts")) {
-            payload["ts"] = (System.currentTimeMillis() / 1000L)
-        }
+        payload["ts"] = (System.currentTimeMillis() / 1000L)
         val dataJson = crypto.buildCanonicalDataJson(payload)
         Log.d(TAG, "Canonical dataJson=$dataJson")
         val sig = crypto.signDataJson(dataJson)
         if (sig.isBlank()) return null
+        Log.d(TAG, "Signature (base64)=${sig.take(40)}")
         val envelope = JSONObject()
         envelope.put("sig", sig)
         envelope.put("data", toJsonValue(payload))
-        return envelope.toString()
+        return SignedRequest(
+            body = envelope.toString().toRequestBody(JSON_MEDIA_TYPE),
+            dataJson = dataJson,
+            signature = sig
+        )
     }
 
     private fun resolveApiUrl(): String {
@@ -164,4 +170,10 @@ class Api4Client(
             else -> value.toString()
         }
     }
+
+    private data class SignedRequest(
+        val body: okhttp3.RequestBody,
+        val dataJson: String,
+        val signature: String
+    )
 }
