@@ -89,9 +89,9 @@ class CryptoManager(private val storage: FileStorage) {
         val trimmed = pemText.trim()
         val normalizedLineBreaks = trimmed.replace("\r\n", "\n")
         val withoutTrailing = normalizedLineBreaks.trimEnd('\n')
-        return withoutTrailing + "\n"
+        return withoutTrailing
     }
-
+    
     fun pemToCanonicalPubBase64(pemText: String): String {
         val canonicalPem = normalizePemText(pemText)
         return Base64.encodeToString(canonicalPem.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
