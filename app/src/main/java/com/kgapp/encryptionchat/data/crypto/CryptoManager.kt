@@ -86,18 +86,23 @@ class CryptoManager(private val storage: FileStorage) {
 
     fun computePemBase64(): String? {
         val pem = readPublicPemText() ?: return null
-        val trimmed = pem.trimEnd('\n')
-        return java.util.Base64.getEncoder().encodeToString(trimmed.toByteArray(Charsets.UTF_8))
+        val normalized = pem.trim()
+        val withLineBreak = normalized + if (normalized.endsWith("\n")) "" else "\n"
+        return java.util.Base64.getEncoder().encodeToString(withLineBreak.toByteArray(Charsets.UTF_8))
     }
 
     fun computeSelfName(): String? {
         val pemB64 = computePemBase64() ?: return null
-        return md5Hex(pemB64.toByteArray(Charsets.UTF_8))
+        return computeUidFromPubBase64(pemB64)
     }
 
     fun md5Hex(input: ByteArray): String {
         val digest = MessageDigest.getInstance("MD5").digest(input)
         return digest.joinToString("") { "%02x".format(it) }
+    }
+
+    fun computeUidFromPubBase64(pubBase64: String): String {
+        return md5Hex(pubBase64.toByteArray(Charsets.UTF_8))
     }
 
     fun encryptWithPublicPemBase64(pubPemBase64: String, plain: String): String {

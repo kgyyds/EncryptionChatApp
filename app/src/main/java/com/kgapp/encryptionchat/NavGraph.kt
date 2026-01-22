@@ -33,6 +33,7 @@ import com.kgapp.encryptionchat.ui.screens.AddContactScreen
 import com.kgapp.encryptionchat.ui.screens.ChatScreen
 import com.kgapp.encryptionchat.ui.screens.ContactsScreen
 import com.kgapp.encryptionchat.ui.screens.DebugScreen
+import com.kgapp.encryptionchat.ui.screens.DebugSettingsScreen
 import com.kgapp.encryptionchat.ui.screens.DecoyTabs
 import com.kgapp.encryptionchat.ui.screens.GateScreen
 import com.kgapp.encryptionchat.ui.screens.KeyManagementScreen
@@ -58,6 +59,7 @@ sealed class Screen(val route: String) {
     data object TimeDisplaySettings : Screen("time_display_settings")
     data object NotificationSettings : Screen("notification_settings")
     data object ApiSettings : Screen("api_settings")
+    data object DebugSettings : Screen("debug_settings")
     data object SecuritySettings : Screen("security_settings")
     data object DecoyTabs : Screen("decoy_tabs")
     data object DecoyChat : Screen("decoy/chat/{cid}") {
@@ -111,7 +113,8 @@ fun EncryptionChatApp(repository: ChatRepository, messageSyncManager: MessageSyn
                 onOpenSecurity = { navController.navigate(Screen.SecuritySettings.route) },
                 onOpenTimeDisplay = { navController.navigate(Screen.TimeDisplaySettings.route) },
                 onOpenApiSettings = { navController.navigate(Screen.ApiSettings.route) },
-                onOpenNotificationSettings = { navController.navigate(Screen.NotificationSettings.route) }
+                onOpenNotificationSettings = { navController.navigate(Screen.NotificationSettings.route) },
+                onOpenDebugSettings = { navController.navigate(Screen.DebugSettings.route) }
             )
         }
         composable(Screen.AddContact.route) {
@@ -173,6 +176,15 @@ fun EncryptionChatApp(repository: ChatRepository, messageSyncManager: MessageSyn
                 return@composable
             }
             ApiSettingsScreen(onBack = { navController.popBackStack() })
+        }
+        composable(Screen.DebugSettings.route) {
+            if (!unlocked || sessionMode != SessionMode.NORMAL) {
+                navController.navigate(Screen.Gate.route) {
+                    popUpTo(Screen.DebugSettings.route) { inclusive = true }
+                }
+                return@composable
+            }
+            DebugSettingsScreen(onBack = { navController.popBackStack() })
         }
         composable(Screen.SecuritySettings.route) {
             if (!unlocked || sessionMode != SessionMode.NORMAL) {
@@ -254,7 +266,8 @@ private fun TabScaffold(
     onOpenSecurity: () -> Unit,
     onOpenTimeDisplay: () -> Unit,
     onOpenApiSettings: () -> Unit,
-    onOpenNotificationSettings: () -> Unit
+    onOpenNotificationSettings: () -> Unit,
+    onOpenDebugSettings: () -> Unit
 ) {
     var selectedTab by rememberSaveable { mutableStateOf(Screen.Recent.route) }
     val tabs = listOf(Screen.Recent, Screen.Contacts, Screen.Settings)
@@ -304,7 +317,8 @@ private fun TabScaffold(
                     onOpenSecurity = onOpenSecurity,
                     onOpenTimeDisplay = onOpenTimeDisplay,
                     onOpenApiSettings = onOpenApiSettings,
-                    onOpenNotificationSettings = onOpenNotificationSettings
+                    onOpenNotificationSettings = onOpenNotificationSettings,
+                    onOpenDebugSettings = onOpenDebugSettings
                 )
             }
         }

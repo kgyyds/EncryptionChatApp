@@ -13,6 +13,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.outlined.Notifications
+import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Security
 import androidx.compose.material3.Card
@@ -45,7 +46,8 @@ fun SettingsScreen(
     onOpenSecurity: () -> Unit,
     onOpenTimeDisplay: () -> Unit,
     onOpenApiSettings: () -> Unit,
-    onOpenNotificationSettings: () -> Unit
+    onOpenNotificationSettings: () -> Unit,
+    onOpenDebugSettings: () -> Unit
 ) {
     val viewModel: SettingsViewModel = viewModel(factory = RepositoryViewModelFactory(repository))
     val state = viewModel.state.collectAsStateWithLifecycle()
@@ -127,6 +129,19 @@ fun SettingsScreen(
                     icon = Icons.Outlined.Notifications,
                     background = groupBackground,
                     onClick = onOpenNotificationSettings
+                )
+            }
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = cardColors
+            ) {
+                SectionTitle("诊断")
+                EntryRow(
+                    title = "Debug 诊断模式",
+                    subtitle = "查看发送/接收链路日志",
+                    icon = Icons.Outlined.BugReport,
+                    background = groupBackground,
+                    onClick = onOpenDebugSettings
                 )
             }
             Card(

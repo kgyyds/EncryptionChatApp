@@ -7,6 +7,9 @@ import com.kgapp.encryptionchat.data.crypto.HybridCrypto
 import com.kgapp.encryptionchat.data.model.ChatMessage
 import com.kgapp.encryptionchat.data.model.ContactConfig
 import com.kgapp.encryptionchat.data.storage.FileStorage
+import com.kgapp.encryptionchat.util.DebugLevel
+import com.kgapp.encryptionchat.util.DebugLog
+import com.kgapp.encryptionchat.util.DebugPreferences
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -54,7 +57,10 @@ class ChatRepository(
 
     suspend fun getPemBase64(): String? = withContext(Dispatchers.IO) { crypto.computePemBase64() }
 
-    suspend fun readContacts(): Map<String, ContactConfig> = withContext(Dispatchers.IO) { storage.readContactsConfig() }
+    suspend fun readContacts(): Map<String, ContactConfig> = withContext(Dispatchers.IO) {
+        migrateContactsIfNeeded()
+        storage.readContactsConfig()
+    }
     suspend fun getContact(uid: String): ContactConfig? = withContext(Dispatchers.IO) { storage.readContactsConfig()[uid] }
 
     suspend fun updateContactRemark(uid: String, remark: String): Boolean =
@@ -83,7 +89,7 @@ class ChatRepository(
 
     suspend fun addContact(remark: String, pubKey: String, password: String): String = withContext(Dispatchers.IO) {
         val pubB64 = java.util.Base64.getEncoder().encodeToString(pubKey.toByteArray(Charsets.UTF_8))
-        val uid = crypto.md5Hex(pubB64.toByteArray(Charsets.UTF_8))
+        val uid = crypto.computeUidFromPubBase64(pubB64)
         val config = storage.readContactsConfig()
         config[uid] = ContactConfig(Remark = remark, public = pubB64, pass = password)
         storage.writeContactsConfig(config)
@@ -177,7 +183,11 @@ class ChatRepository(
         }
     }
 
-    suspend fun sendChat(uid: String, text: String): SendResult = withContext(Dispatchers.IO) {
+    suspend fun sendChat(
+        uid: String,
+        text: String,
+        onRetry: (suspend (attempt: Int) -> Unit)? = null
+    ): SendResult = withContext(Dispatchers.IO) {
         val config = storage.readContactsConfig()
         val contact = config[uid] ?: return@withContext SendResult(false, null, "联系人不存在", null)
         if (!contact.showInRecent) {
@@ -197,16 +207,20 @@ class ChatRepository(
             plaintext = textTo
         ) ?: return@withContext SendResult(false, null, "加密失败", null)
 
-        val respResult = api.sendMsg(
-            recipient = uid,
-            msg = encrypted.msg,
-            key = encrypted.key,
-            ts = ts
-        )
-        val resp = when (respResult) {
-            is ApiResult.Success -> respResult.value
-            is ApiResult.Failure -> return@withContext SendResult(false, null, respResult.message, null)
+        val resp = retryWithBackoff(maxAttempts = 3, onRetry = onRetry) { attempt ->
+            val respResult = api.sendMsg(
+                recipient = uid,
+                msg = encrypted.msg,
+                key = encrypted.key
+            )
+            when (respResult) {
+                is ApiResult.Success -> respResult.value
+                is ApiResult.Failure -> {
+                    if (attempt < 3) null else return@retryWithBackoff null
+                }
+            }
         }
+            ?: return@withContext SendResult(false, null, "消息发送失败", null)
 
         val code = resp.optInt("code", -1)
         if (code == 0 && resp.has("ts")) {
@@ -226,11 +240,13 @@ class ChatRepository(
             val history = storage.readChatHistory(uid)
             val lastTs = history.keys.mapNotNull { it.toLongOrNull() }.maxOrNull() ?: 0L
 
-            val respResult = api.getMsg(from = uid, lastTs = lastTs)
-            val resp = when (respResult) {
-                is ApiResult.Success -> respResult.value
-                is ApiResult.Failure -> return@withChatLock ReadResult(false, null, respResult.message, 0, false)
-            }
+            val resp = retryWithBackoff(maxAttempts = 3, onRetry = null) { attempt ->
+                val respResult = api.getMsg(from = uid, lastTs = lastTs)
+                when (respResult) {
+                    is ApiResult.Success -> respResult.value
+                    is ApiResult.Failure -> if (attempt < 3) null else null
+                }
+            } ?: return@withChatLock ReadResult(false, null, "拉取消息失败", 0, false)
 
             val code = resp.optInt("code", -1)
             if (code == 0 && resp.has("data")) {
@@ -293,11 +309,35 @@ class ChatRepository(
     ): IncomingResult =
         withContext(Dispatchers.IO) {
             withChatLock(uid) {
+                val detailed = DebugPreferences.isDetailedLogs(storage.appContext)
+                DebugLog.append(
+                    context = storage.appContext,
+                    level = DebugLevel.INFO,
+                    tag = "CRYPTO",
+                    chatUid = uid,
+                    eventName = "incoming",
+                    message = "ts=$ts keyLen=${key.length} msgLen=${cipherText.length}",
+                    optionalJson = DebugLog.optionalJson(
+                        mapOf(
+                            "keySummary" to DebugLog.summarizeSensitive(key, detailed),
+                            "msgSummary" to DebugLog.summarizeSensitive(cipherText, detailed)
+                        ),
+                        detailed
+                    )
+                )
                 val config = storage.readContactsConfig()
                 val contact = config[uid] ?: return@withChatLock IncomingResult(false, "联系人不存在", false)
 
                 val history = storage.readChatHistory(uid)
                 if (history.containsKey(ts.toString())) {
+                    DebugLog.append(
+                        context = storage.appContext,
+                        level = DebugLevel.WARN,
+                        tag = "STORE",
+                        chatUid = uid,
+                        eventName = "duplicate",
+                        message = "ts=$ts"
+                    )
                     return@withChatLock IncomingResult(false, "消息已存在", false)
                 }
 
@@ -312,6 +352,14 @@ class ChatRepository(
                     msgBase64 = cipherText
                 )
                 if (plain == null || plain == "解密失败") {
+                    DebugLog.append(
+                        context = storage.appContext,
+                        level = DebugLevel.ERROR,
+                        tag = "CRYPTO",
+                        chatUid = uid,
+                        eventName = "decrypt_failed",
+                        message = "ts=$ts"
+                    )
                     return@withChatLock IncomingResult(false, "消息解密失败", false)
                 }
 
@@ -323,6 +371,14 @@ class ChatRepository(
                 if (ts <= 0L || cleanText.isBlank()) return@withChatLock IncomingResult(false, "消息格式异常", false)
 
                 storage.upsertChatMessage(uid, ts.toString(), ChatMessage(Spokesman = 1, text = cleanText))
+                DebugLog.append(
+                    context = storage.appContext,
+                    level = DebugLevel.INFO,
+                    tag = "STORE",
+                    chatUid = uid,
+                    eventName = "stored",
+                    message = "ts=$ts"
+                )
                 if (!contact.showInRecent) {
                     config[uid] = contact.copy(showInRecent = true)
                     storage.writeContactsConfig(config)
@@ -342,5 +398,51 @@ class ChatRepository(
     private suspend fun <T> withChatLock(uid: String, block: suspend () -> T): T {
         val mutex = chatLocks.getOrPut(uid) { Mutex() }
         return mutex.withLock { block() }
+    }
+
+    private suspend fun <T> retryWithBackoff(
+        maxAttempts: Int,
+        onRetry: (suspend (attempt: Int) -> Unit)?,
+        block: suspend (attempt: Int) -> T?
+    ): T? {
+        var attempt = 1
+        var backoffMs = 1000L
+        while (attempt <= maxAttempts) {
+            val result = block(attempt)
+            if (result != null) return result
+            if (attempt >= maxAttempts) break
+            onRetry?.invoke(attempt + 1)
+            kotlinx.coroutines.delay(backoffMs)
+            backoffMs = (backoffMs * 2).coerceAtMost(8000L)
+            attempt += 1
+        }
+        return null
+    }
+
+    private fun migrateContactsIfNeeded() {
+        val config = storage.readContactsConfig()
+        if (config.isEmpty()) return
+        var changed = false
+        val updated = config.toMutableMap()
+        val migrations = mutableListOf<Pair<String, String>>()
+        config.forEach { (uid, contact) ->
+            val recomputed = crypto.computeUidFromPubBase64(contact.public)
+            if (recomputed == uid) return@forEach
+            if (!updated.containsKey(recomputed)) {
+                updated.remove(uid)
+                updated[recomputed] = contact.copy(legacyUid = uid)
+                migrations.add(uid to recomputed)
+                changed = true
+            } else {
+                updated[uid] = contact.copy(legacyUid = uid)
+                changed = true
+            }
+        }
+        if (changed) {
+            storage.writeContactsConfig(updated)
+            migrations.forEach { (oldUid, newUid) ->
+                storage.renameChatHistory(oldUid, newUid)
+            }
+        }
     }
 }

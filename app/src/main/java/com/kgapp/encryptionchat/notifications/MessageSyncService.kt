@@ -14,6 +14,9 @@ import com.kgapp.encryptionchat.data.sync.MessageSyncRegistry
 import com.kgapp.encryptionchat.data.sync.MessageUpdateBus
 import com.kgapp.encryptionchat.security.SecuritySettings
 import com.kgapp.encryptionchat.util.ApiSettingsPreferences
+import com.kgapp.encryptionchat.util.DebugLevel
+import com.kgapp.encryptionchat.util.DebugLog
+import com.kgapp.encryptionchat.util.DebugPreferences
 import com.kgapp.encryptionchat.util.NotificationPreferences
 import com.kgapp.encryptionchat.util.UnreadCounter
 import kotlinx.coroutines.CoroutineScope
@@ -182,6 +185,24 @@ class MessageSyncService : Service() {
         val key = json.optString("key", "")
         val text = json.optString("msg", "")
         val ts = json.optLong("ts", 0L)
+        val detailed = DebugPreferences.isDetailedLogs(this)
+        DebugLog.append(
+            context = this,
+            level = DebugLevel.INFO,
+            tag = "SSE",
+            chatUid = fromUid,
+            eventName = "payload",
+            message = "len=${payload.length} from=$fromUid ts=$ts keyLen=${key.length} msgLen=${text.length}",
+            optionalJson = DebugLog.optionalJson(
+                mapOf(
+                    "from" to fromUid,
+                    "ts" to ts,
+                    "keySummary" to DebugLog.summarizeSensitive(key, detailed),
+                    "msgSummary" to DebugLog.summarizeSensitive(text, detailed)
+                ),
+                detailed
+            )
+        )
         Log.d(TAG, "SSE payload parsed from=$fromUid ts=$ts")
         if (fromUid.isBlank() || text.isBlank() || ts <= 0L) return
         val result = repository.handleIncomingCipherMessage(fromUid, ts, key, text)
@@ -190,7 +211,7 @@ class MessageSyncService : Service() {
         }
         if (result.success) {
             Log.d(TAG, "SSE message saved uid=$fromUid ts=$ts")
-            MessageUpdateBus.emit(fromUid)
+            MessageUpdateBus.emit(fromUid, this)
             UnreadCounter.increment(this, fromUid)
             notifyIncomingMessage(fromUid, ts)
         }
