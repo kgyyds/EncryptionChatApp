@@ -48,6 +48,20 @@ object UnreadCounter {
         }
     }
 
+    fun migrateUids(context: Context, mapping: Map<String, String>) {
+        if (mapping.isEmpty()) return
+        val updated = _counts.value.toMutableMap()
+        var changed = false
+        mapping.forEach { (oldUid, newUid) ->
+            val count = updated.remove(oldUid) ?: return@forEach
+            updated[newUid] = (updated[newUid] ?: 0) + count
+            changed = true
+        }
+        if (changed) {
+            update(context, updated)
+        }
+    }
+
     private fun update(context: Context, map: Map<String, Int>) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit()

@@ -1,5 +1,7 @@
 package com.kgapp.encryptionchat.data.crypto
 
+import android.util.Log
+import com.kgapp.encryptionchat.BuildConfig
 import java.math.BigDecimal
 import org.json.JSONArray
 import org.json.JSONObject
@@ -13,7 +15,19 @@ object ProtocolCanonicalizer {
     }
 
     fun canonicalStringForSigning(data: Map<String, Any?>): String {
-        return buildCanonicalDataJson(data)
+        val canonical = buildCanonicalDataJson(data)
+        if (BuildConfig.DEBUG) {
+            val type = data["type"]?.toString().orEmpty()
+            if (type == "SseAllMsg") {
+                val contacts = data["contacts"]
+                val contactsIsArray = contacts is Iterable<*> || contacts is Array<*> || contacts is JSONArray
+                Log.d(
+                    "ProtocolCanonicalizer",
+                    "SseAllMsg canonical=${canonical.take(200)} contactsIsArray=$contactsIsArray"
+                )
+            }
+        }
+        return canonical
     }
 
     private fun normalizeStructure(value: Any?): Any? {
@@ -23,7 +37,7 @@ object ProtocolCanonicalizer {
             is Iterable<*> -> normalizeList(value.toList())
             is Array<*> -> normalizeList(value.toList())
             is JSONArray -> normalizeList((0 until value.length()).map { value.opt(it) })
-            else -> null
+            else -> normalizeScalar(value)
         }
     }
 
@@ -43,9 +57,7 @@ object ProtocolCanonicalizer {
             .sortedBy { it.key.toString() }
         val normalized = LinkedHashMap<String, Any?>()
         for (entry in sortedEntries) {
-            val value = entry.value
-            val normalizedValue = if (isArrayLike(value)) normalizeNestedJson(value) else normalizeScalar(value)
-            normalized[entry.key.toString()] = normalizedValue
+            normalized[entry.key.toString()] = normalizeStructure(entry.value)
         }
         return normalized
     }
@@ -53,8 +65,7 @@ object ProtocolCanonicalizer {
     private fun normalizeList(list: List<*>): List<Any?> {
         val normalized = ArrayList<Any?>(list.size)
         list.forEach { value ->
-            val normalizedValue = if (isArrayLike(value)) normalizeNestedJson(value) else normalizeScalar(value)
-            normalized.add(normalizedValue)
+            normalized.add(normalizeStructure(value))
         }
         return normalized
     }
@@ -62,26 +73,9 @@ object ProtocolCanonicalizer {
     private fun normalizeScalar(value: Any?): Any? {
         return when (value) {
             null -> null
-            is String, is Number, is Boolean -> value
+            is String -> numericStringToNumber(value) ?: value
+            is Number, is Boolean -> value
             else -> value.toString()
-        }
-    }
-
-    private fun normalizeNestedJson(value: Any?): String {
-        val normalized = normalizeStructure(value) ?: emptyMap<String, Any?>()
-        val builder = StringBuilder()
-        appendJsonValue(builder, normalized)
-        return builder.toString()
-    }
-
-    private fun isArrayLike(value: Any?): Boolean {
-        return when (value) {
-            is Map<*, *>,
-            is JSONObject,
-            is Iterable<*>,
-            is Array<*>,
-            is JSONArray -> true
-            else -> false
         }
     }
 
@@ -119,23 +113,18 @@ object ProtocolCanonicalizer {
     }
 
     private fun appendJsonString(builder: StringBuilder, value: String) {
-        val numeric = numericStringOrNull(value)
-        if (numeric != null) {
-            builder.append(numeric)
-            return
-        }
         builder.append("\"").append(escapeJsonString(value)).append("\"")
     }
 
-    private fun numericStringOrNull(value: String): String? {
+    private fun numericStringToNumber(value: String): Number? {
         if (value.isEmpty()) return null
         val pattern = Regex("^[+-]?(?:\\d+\\.?\\d*|\\d*\\.\\d+)(?:[eE][+-]?\\d+)?$")
         if (!pattern.matches(value)) return null
         return try {
             if (value.contains('.') || value.contains('e', true) || value.contains('E')) {
-                BigDecimal(value).stripTrailingZeros().toPlainString()
+                BigDecimal(value).stripTrailingZeros()
             } else {
-                BigDecimal(value).toBigIntegerExact().toString()
+                BigDecimal(value).toBigIntegerExact()
             }
         } catch (ex: Exception) {
             null

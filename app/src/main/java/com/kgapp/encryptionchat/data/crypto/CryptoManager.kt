@@ -1,5 +1,6 @@
 package com.kgapp.encryptionchat.data.crypto
 
+import android.util.Base64
 import com.kgapp.encryptionchat.data.storage.FileStorage
 import java.nio.charset.StandardCharsets
 import java.security.KeyFactory
@@ -84,11 +85,27 @@ class CryptoManager(private val storage: FileStorage) {
         }
     }
 
+    fun normalizePemText(pemText: String): String {
+        val trimmed = pemText.trim()
+        val normalizedLineBreaks = trimmed.replace("\r\n", "\n")
+        val withoutTrailing = normalizedLineBreaks.trimEnd('\n')
+        return withoutTrailing + "\n"
+    }
+
+    fun pemToCanonicalPubBase64(pemText: String): String {
+        val canonicalPem = normalizePemText(pemText)
+        return Base64.encodeToString(canonicalPem.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
+    }
+
+    fun canonicalizePubBase64(pubB64: String): String {
+        val pemBytes = Base64.decode(pubB64, Base64.DEFAULT)
+        val pemText = String(pemBytes, Charsets.UTF_8)
+        return pemToCanonicalPubBase64(pemText)
+    }
+
     fun computePemBase64(): String? {
         val pem = readPublicPemText() ?: return null
-        val normalized = pem.trim()
-        val withLineBreak = normalized + if (normalized.endsWith("\n")) "" else "\n"
-        return java.util.Base64.getEncoder().encodeToString(withLineBreak.toByteArray(Charsets.UTF_8))
+        return pemToCanonicalPubBase64(pem)
     }
 
     fun computeSelfName(): String? {

@@ -93,6 +93,17 @@ class MessageSyncManager(
             chatFromUid = fromUid
             activeChatUid = fromUid
             chatJob = scope.launch {
+                val selfUid = repository.getSelfName().orEmpty()
+                val contactChecks = repository.getContactUidChecks(5)
+                val checkSummary = contactChecks.joinToString { "${it.uid}->${it.recomputedUid}" }
+                DebugLog.append(
+                    context = context,
+                    level = DebugLevel.INFO,
+                    tag = "SSE",
+                    chatUid = fromUid,
+                    eventName = "connect",
+                    message = "selfUid=$selfUid contacts=${contactChecks.size} checks=$checkSummary"
+                )
                 val lastTs = repository.getLastTimestamp(fromUid)
                 val call = api.openSseMsg(from = fromUid, lastTs = lastTs)
                     ?: run {
@@ -229,6 +240,17 @@ class MessageSyncManager(
                     backoffMs = (backoffMs * 2).coerceAtMost(MAX_BACKOFF_MS)
                     continue
                 }
+                val selfUid = repository.getSelfName().orEmpty()
+                val contactChecks = repository.getContactUidChecks(5)
+                val checkSummary = contactChecks.joinToString { "${it.uid}->${it.recomputedUid}" }
+                DebugLog.append(
+                    context = context,
+                    level = DebugLevel.INFO,
+                    tag = "SSE",
+                    chatUid = null,
+                    eventName = "connect",
+                    message = "selfUid=$selfUid contacts=${contacts.size} checks=$checkSummary"
+                )
                 val contactPayload = contacts.keys.map { uid ->
                     val lastTs = repository.getLastTimestamp(uid)
                     mapOf("uid" to uid, "ts" to lastTs)
@@ -321,9 +343,10 @@ class MessageSyncManager(
             tag = "SSE",
             chatUid = fromUid,
             eventName = "payload",
-            message = "len=${payload.length} ts=$ts keyLen=${key.length} msgLen=${text.length}",
+            message = "fromUid=$fromUid len=${payload.length} ts=$ts keyLen=${key.length} msgLen=${text.length}",
             optionalJson = DebugLog.optionalJson(
                 mapOf(
+                    "fromUid" to fromUid,
                     "ts" to ts,
                     "keySummary" to DebugLog.summarizeSensitive(key, detailed),
                     "msgSummary" to DebugLog.summarizeSensitive(text, detailed)
