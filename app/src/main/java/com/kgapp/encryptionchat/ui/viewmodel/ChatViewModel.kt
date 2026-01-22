@@ -77,7 +77,9 @@ class ChatViewModel(
         val localTs = Instant.now().epochSecond.toString()
         repository.appendMessage(uid, localTs, 0, text)
         refresh()
-        val result = repository.sendChat(uid, text)
+        val result = repository.sendChat(uid, text) { attempt ->
+            repository.appendMessage(uid, Instant.now().epochSecond.toString(), 2, "消息发送重试中(第${attempt}次)")
+        }
         return if (result.success) {
             val serverTs = result.addedTs
             if (!serverTs.isNullOrBlank() && serverTs != localTs) {

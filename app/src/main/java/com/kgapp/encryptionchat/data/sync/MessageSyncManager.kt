@@ -99,6 +99,7 @@ class MessageSyncManager(
                 try {
                     call.execute().use { response ->
                         val contentType = response.header("Content-Type")
+                        api.updateServerTimeOffsetFromResponseHeader(response.header("Date"))
                         Log.d(TAG, "SSE response code=${response.code} contentType=$contentType")
                         if (!response.isSuccessful) {
                             val body = response.body?.string()?.take(500)

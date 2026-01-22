@@ -63,6 +63,18 @@ class FileStorage(private val context: Context) {
         }
     }
 
+    fun renameChatHistory(oldUid: String, newUid: String): Boolean {
+        val oldFile = chatFile(oldUid)
+        if (!oldFile.exists()) return false
+        val newFile = chatFile(newUid)
+        ensureChatFile(newUid)
+        if (newFile.exists()) {
+            return false
+        }
+        oldFile.parentFile?.mkdirs()
+        return oldFile.renameTo(newFile)
+    }
+
     fun readContactsConfig(): MutableMap<String, ContactConfig> {
         val file = contactsConfigFile()
         if (!file.exists()) {
