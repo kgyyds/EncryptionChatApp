@@ -87,7 +87,25 @@ class MessageSyncService : Service() {
         MessageSyncRegistry.ensureAppBroadcast()
         super.onDestroy()
     }
+    override fun onTaskRemoved(rootIntent: Intent?) {
+    super.onTaskRemoved(rootIntent)
+    Log.d(TAG, "onTaskRemoved: task removed by user, force restart SSE")
 
+    // 1) 断开当前 SSE（避免卡死）
+    broadcastCall?.cancel()
+    broadcastCall = null
+
+    // 2) 重新拉 SSE
+    if (NotificationPreferences.isBackgroundReceiveEnabled(this)) {
+        // 确保前台服务状态还在
+        startForeground(SERVICE_NOTIFICATION_ID, notifier.notifyServiceRunning())
+
+        // 重启 SSE job
+        if (broadcastJob?.isActive != true) {
+            startBroadcastSse()
+        }
+    }
+}
     override fun onBind(intent: Intent?): IBinder? = null
 
     private fun startBroadcastSse() {
