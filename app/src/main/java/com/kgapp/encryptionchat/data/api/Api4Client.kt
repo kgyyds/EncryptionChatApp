@@ -26,8 +26,11 @@ class Api4Client(
     private val baseUrlProvider: () -> String,
     private val client: OkHttpClient = OkHttpClient(),
     private val sseClient: OkHttpClient = client.newBuilder()
-        .readTimeout(0, TimeUnit.MILLISECONDS)
-        .build()
+    .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+    .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)   // ✅ 关键：没数据/心跳就抛超时
+    .writeTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+    .callTimeout(0, java.util.concurrent.TimeUnit.SECONDS)    // ✅ 可选：整体不限制，让 readTimeout 控制
+    .build()
 ) {
     companion object {
         private const val USER_AGENT = "my-bot/1.0"
