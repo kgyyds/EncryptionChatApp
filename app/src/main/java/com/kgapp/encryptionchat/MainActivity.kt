@@ -88,9 +88,12 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+
+
 @Composable
 private fun NotificationPermissionPrompt() {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+
     val context = LocalContext.current
     val hasPermission = remember {
         mutableStateOf(
@@ -100,9 +103,16 @@ private fun NotificationPermissionPrompt() {
             ) == android.content.pm.PackageManager.PERMISSION_GRANTED
         )
     }
-    val asked = NotificationPreferences.askedPostNotifications.collectAsState()
-    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+
+    // ✅ 不再用 asked 来永久拦截弹窗
+    val launcher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
         hasPermission.value = granted
+        // ✅ 只有真正授权成功才标记为“已处理”，避免用户点“稍后”导致永久不提示
+        if (granted) {
+            NotificationPreferences.setAskedPostNotifications(context, true)
+        }
     }
 
     LaunchedEffect(Unit) {
@@ -112,21 +122,23 @@ private fun NotificationPermissionPrompt() {
         ) == android.content.pm.PackageManager.PERMISSION_GRANTED
     }
 
-    if (!hasPermission.value && !asked.value) {
+    // ✅ 没权限就弹（你也可以加一个“3天后再提醒”的节制逻辑，但先把功能救活）
+    if (!hasPermission.value) {
         AlertDialog(
-            onDismissRequest = { NotificationPreferences.setAskedPostNotifications(context, true) },
+            onDismissRequest = { /* 不要在这里 setAskedPostNotifications(true) */ },
             title = { Text("开启通知") },
-            text = { Text("允许通知后可在后台接收消息提醒。") },
+            text = { Text("允许通知后才能在后台收到新消息提醒。") },
             confirmButton = {
                 TextButton(onClick = {
-                    NotificationPreferences.setAskedPostNotifications(context, true)
                     launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
                 }) {
                     Text("去开启")
                 }
             },
             dismissButton = {
-                TextButton(onClick = { NotificationPreferences.setAskedPostNotifications(context, true) }) {
+                TextButton(onClick = {
+                    // ✅ 用户点“稍后”不锁死，下次还能再提醒
+                }) {
                     Text("稍后")
                 }
             }

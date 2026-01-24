@@ -22,13 +22,19 @@ class AppNotifier(private val context: Context) {
     fun ensureChannels() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        
+        
         val messageChannel = NotificationChannel(
-            CHANNEL_MESSAGES,
-            "消息通知",
-            NotificationManager.IMPORTANCE_HIGH
-        ).apply {
-            description = "新消息提醒"
-        }
+    CHANNEL_MESSAGES,
+    "消息通知",
+    NotificationManager.IMPORTANCE_HIGH
+).apply {
+    description = "新消息提醒"
+    enableVibration(true)
+    setShowBadge(true)
+    lockscreenVisibility = Notification.VISIBILITY_PRIVATE
+}
+        
         val serviceChannel = NotificationChannel(
             CHANNEL_SERVICE,
             "后台同步",
@@ -70,15 +76,17 @@ class AppNotifier(private val context: Context) {
             NotificationPreferences.getPreviewMode(context) == NotificationPreviewMode.SHOW_PREVIEW
 
         val builder = NotificationCompat.Builder(context, CHANNEL_MESSAGES)
-            .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle(title)
-            .setAutoCancel(true)
-            .setCategory(NotificationCompat.CATEGORY_MESSAGE)
-            .setWhen((ts.takeIf { it > 0L } ?: Instant.now().epochSecond) * 1000L)
-            .setNumber(unreadCount)
-            .setGroup(GROUP_MESSAGES)
-            .setContentIntent(messagePendingIntent(fromUid))
+    .setSmallIcon(R.mipmap.ic_launcher)
+    .setContentTitle(title)
+    .setAutoCancel(true)
+    .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+    .setWhen((ts.takeIf { it > 0L } ?: Instant.now().epochSecond) * 1000L)
+    .setNumber(unreadCount)
+    .setContentIntent(messagePendingIntent(fromUid))
 
+    // ✅ 关键：保证横幅/响铃/震动（尤其在 Android < 8）
+    .setPriority(NotificationCompat.PRIORITY_HIGH)
+    .setDefaults(NotificationCompat.DEFAULT_ALL)
         if (showPreview) {
             val style = NotificationCompat.MessagingStyle(title)
             val history = messageHistory.getOrPut(fromUid) { ArrayDeque() }
@@ -150,7 +158,8 @@ class AppNotifier(private val context: Context) {
     companion object {
         private const val TAG = "AppNotifier"
         const val EXTRA_OPEN_CHAT_UID = "open_chat_uid"
-        private const val CHANNEL_MESSAGES = "channel_messages"
+        // ✅ 改成 v2，强制系统创建新 channel（旧 channel 的重要性改不了）
+        private const val CHANNEL_MESSAGES = "channel_messages_v2"
         private const val CHANNEL_SERVICE = "channel_service"
         private const val GROUP_MESSAGES = "messages_group"
         private const val MAX_HISTORY = 5
