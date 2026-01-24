@@ -229,7 +229,14 @@ class MessageSyncService : Service() {
         val previewMode = NotificationPreferences.getPreviewMode(this)
         val notificationId = fromUid.hashCode()
         Log.d(TAG, "Notify message uid=$fromUid locked=$locked preview=$previewMode id=$notificationId")
-        notifier.notifyMessage(fromUid, title, preview, ts, unreadCount, locked)
+        notifier.notifyMessage(
+    fromUid = fromUid,
+    fromName = title,
+    preview = preview,
+    ts = ts
+)
+        
+        
     }
 
     companion object {
